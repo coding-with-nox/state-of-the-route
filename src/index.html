@@ -181,6 +181,16 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline
   .stats{order:-2}
   .banner{display:block;font-size:11px;padding:6px 8px}
 }
+/* Stato servizi */
+.hl-box{display:flex;flex-direction:column;gap:10px;min-width:0}
+.hl-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.hl-row{display:grid;grid-template-columns:12px minmax(0,1fr) auto;align-items:baseline;gap:8px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:7px 10px}
+.hl-dot{width:10px;height:10px;border-radius:50%;background:var(--none);align-self:center}
+.hl-row[data-ok="true"] .hl-dot{background:var(--dry)} .hl-row[data-ok="false"] .hl-dot{background:var(--heavy)}
+.hl-name{font:600 12.5px/1.3 var(--body);overflow-wrap:anywhere}
+.hl-res{font:500 11.5px var(--mono);white-space:nowrap}
+.hl-row[data-ok="true"] .hl-res{color:var(--dry)} .hl-row[data-ok="false"] .hl-res{color:var(--heavy)}
+.hl-err{grid-column:2/4;font:11.5px/1.35 var(--mono);color:var(--muted);overflow-wrap:anywhere}
 details.src>summary{cursor:pointer;color:var(--muted);font-size:12px}
 </style>
 </head>
@@ -195,6 +205,7 @@ details.src>summary{cursor:pointer;color:var(--muted);font-size:12px}
       <button class="ib" id="b3d" aria-pressed="false" title="Vista inclinata">3D</button>
       <button class="ib" id="bShelter" aria-pressed="false" title="Dove ripararti se piove">Soste</button>
       <button class="ib" id="bRadar" aria-pressed="false" title="Radar pioggia">Radar</button>
+      <button class="ib" id="bHealth" aria-pressed="false" title="Stato dei servizi (mappa, indirizzi, percorso, meteo)">Servizi</button>
       <button class="ib" id="bDark" aria-pressed="false" title="Mappa scura" hidden>Scura</button>
     </div>
   </div>
@@ -225,6 +236,7 @@ details.src>summary{cursor:pointer;color:var(--muted);font-size:12px}
   </div>
   <div class="hint" id="tzNote"></div>
   <div class="status" id="status" role="status"></div>
+  <div class="status" id="mapStatus" role="status"></div>
 
   <section class="verdict" id="verdict" data-level="none">
     <h2 id="vTitle">Imposta il tragitto</h2>
@@ -249,6 +261,12 @@ details.src>summary{cursor:pointer;color:var(--muted);font-size:12px}
   </div>
   <div class="sh-list" id="shList" aria-live="polite"></div>
   <p class="sh-credit">Soste da dati © OpenStreetMap (<a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>). Gli orari di apertura sono inseriti dai volontari e possono essere non aggiornati.</p>
+</section>
+
+  <section id="healthBox" class="hl-box" hidden aria-labelledby="hlTitle">
+  <div class="sh-head"><h3 class="sh-title" id="hlTitle">Stato servizi</h3><span class="sh-note" id="hlNote"></span></div>
+  <ul class="hl-list" id="hlList" aria-live="polite"></ul>
+  <div class="row"><button type="button" class="btn" id="hlRun">Ricontrolla</button><button type="button" class="btn" id="hlCopy">Copia diagnostica</button></div>
 </section>
 
   <section id="winBox" hidden>
@@ -291,6 +309,8 @@ async function loadLib(){ if(window.maplibregl) return true;
     if(window.maplibregl) return true; }
   return false; }
 if(!await loadLib()){ document.getElementById('map').innerHTML='<p style="margin:0;padding:24px;font:14px system-ui,sans-serif;color:#c8324a">Non riesco a caricare la libreria della mappa (MapLibre). Controlla la connessione e ricarica la pagina.</p>'; throw new Error('maplibre non caricato'); }
+//@include map-style.js
+//@include providers.js
 const FORCE_DEMO=window.__SOTR_DEMO===true;
 const $=id=>document.getElementById(id);
 const LS={get(k){try{return JSON.parse(localStorage.getItem(k))}catch{return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
@@ -299,23 +319,14 @@ const MODELS=["ecmwf_ifs025","gfs_seamless","icon_seamless","meteofrance_seamles
 const levelOf=v=>v==null?'none':v<0.1?'dry':v<1?'light':v<4?'mod':'heavy';
 const LVL_TXT={dry:'asciutto',light:'pioggerella',mod:'pioggia moderata',heavy:'pioggia forte',none:'nessun dato'};
 const rad=x=>x*Math.PI/180, deg=x=>x*180/Math.PI;
-const st={tz:null,off:null,straight:false,a:null,b:null,mode:'dep',speed:18,route:null,steps:[],samples:null,wx:null,dep:null,res:null,key:null};
+const st={provider:'',routeFail:'',tz:null,off:null,straight:false,a:null,b:null,mode:'dep',speed:18,route:null,steps:[],samples:null,wx:null,dep:null,res:null,key:null};
 
 /* ---------- Mappa (MapLibre + OpenFreeMap) ---------- */
 const isDark=matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme!=='light';   /* solo per l'anteprima a quadretti */
 /* Mappa: default sempre chiara (liberty), indipendente dal tema del sistema; "Scura" = fiord, scelta ricordata. */
-let darkMap=LS.get('sotr.dark')===true, curStyle='liberty';
-const styleUrl=n=>`https://tiles.openfreemap.org/styles/${n}`;
-async function probeStyle(first){   /* sonda resiliente: scelto, poi bright, poi liberty; max ~7 s */
-  const t0=Date.now(); let why='';
-  for(const n of [...new Set([first,'bright','liberty'])]){
-    if(Date.now()-t0>7000) break;
-    try{ const r=await fetch(styleUrl(n),{signal:AbortSignal.timeout(3500)}); if(r.ok) return {name:n,why:''}; why||=`stile ${n}: errore ${r.status}`; }
-    catch(e){ why||=`stile ${n}: ${e?.name==='TimeoutError'?'nessuna risposta in tempo':'rete non raggiungibile'}`; } }
-  return {name:null,why};
-}
-const probe=FORCE_DEMO?{name:null,why:''}:await probeStyle(darkMap?'fiord':'liberty');
-const ONLINE=!!probe.name; if(ONLINE) curStyle=probe.name;
+let darkMap=LS.get('sotr.dark')===true;
+const ONLINE=!FORCE_DEMO;
+const theme=()=>darkMap?'dark':'light';
 /* Anteprima offline (es. artifact su claude.ai): percorso reale Figline → Montevarchi e meteo di esempio */
 const DEMO_ROUTE=[[43.61964,11.46969],[43.62025,11.47248],[43.61873,11.47815],[43.61753,11.48589],[43.6118,11.48729],[43.60891,11.49379],[43.60327,11.50598],[43.6014,11.50656],[43.59633,11.51219],[43.59007,11.5163],[43.58771,11.51979],[43.58623,11.52763],[43.52923,11.56718],[43.52331,11.57208],[43.52326,11.57059],[43.52366,11.56779]].map(([la,lo])=>[lo,la]);
 function demoStyle(){ const lines=[]; for(let x=11.40;x<=11.66;x+=0.01) lines.push([[x,43.46],[x,43.68]]); for(let y=43.46;y<=43.68;y+=0.01) lines.push([[11.40,y],[11.66,y]]);
@@ -324,13 +335,36 @@ function demoStyle(){ const lines=[]; for(let x=11.40;x<=11.66;x+=0.01) lines.pu
     layers:[{id:'bg',type:'background',paint:{'background-color':css('bg')}},
       {id:'grid',type:'line',source:'grid',paint:{'line-color':css('line'),'line-width':1,'line-opacity':.6}},
       {id:'arno',type:'line',source:'arno',paint:{'line-color':isDark?'#1d3b57':'#b9d3ee','line-width':6,'line-blur':2}}]}; }
-const map=new maplibregl.Map({container:'map',style:ONLINE?styleUrl(curStyle):demoStyle(),
+/* Mappa: stile vettoriale nostro (map-style.js) -> riserva raster OSM -> solo sfondo a griglia. mapMode: 'vector'|'raster'|'none'|'demo'. */
+let mapMode=ONLINE?'vector':'demo';
+const styleFor=m=>m==='vector'?sotrBuildStyle({theme:theme()}):m==='raster'?sotrRasterStyle({theme:theme()}):demoStyle();
+const map=new maplibregl.Map({container:'map',style:styleFor(mapMode),
   center:[11.52,43.57],zoom:11.2,attributionControl:false});
 map.addControl(new maplibregl.AttributionControl({compact:true}),innerWidth>720?'bottom-right':'top-left');
 map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),'top-right');
 map.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-right');
-const ready=new Promise(r=>map.on('load',r));
-const casingColor=()=>ONLINE?(curStyle==='fiord'?'#0c1218':'#ffffff'):(isDark?'#0c1218':'#ffffff');
+window.__sotrMap=map;   /* per i test e2e */
+const ready=new Promise(r=>map.once('style.load',r));   /* basta lo stile: con tile irraggiungibili 'load' potrebbe non scattare */
+const casingColor=()=>(mapMode==='demo'||mapMode==='none')?(isDark?'#0c1218':'#ffffff'):(darkMap?'#0c1218':'#ffffff');
+const beforeLabel=()=>map.getLayer(SOTR_LAYERS.firstLabel)?SOTR_LAYERS.firstLabel:undefined;
+function mapStatus(t,err){ const e=$('mapStatus'); if(e){ e.textContent=t; e.classList.toggle('err',!!err); } }
+const MAP_TXT={vector:'Mappa: vettoriale OpenFreeMap',raster:'Mappa di riserva: raster OSM',none:'Mappa non raggiungibile: solo tragitto',demo:'Mappa di esempio (anteprima)'};
+/* Sorveglianza dei tile: se nessun tile arriva entro FALLBACK_MS o ci sono >=5 errori senza successi, passa allo stile successivo. */
+const FALLBACK_MS=()=>+window.__SOTR_FALLBACK_MS>0?+window.__SOTR_FALLBACK_MS:12000;
+const watch={src:null,ok:0,err:0,timer:0,gen:0};
+function startWatch(){ clearTimeout(watch.timer); watch.gen++; watch.ok=0; watch.err=0;
+  watch.src=mapMode==='vector'?'openmaptiles':mapMode==='raster'?'osm':null;
+  if(!watch.src){ mapStatus(MAP_TXT[mapMode],mapMode==='none'); return; }
+  mapStatus('Mappa: carico…'); const g=watch.gen;
+  watch.timer=setTimeout(()=>{ if(g===watch.gen&&!watch.ok) mapFail('nessun tile entro '+Math.round(FALLBACK_MS()/1000)+' s'); },FALLBACK_MS()); }
+function mapFail(why){ console.warn('Mappa '+mapMode+' non raggiungibile: '+why);
+  setMapMode(mapMode==='vector'?'raster':'none'); }
+function setMapMode(m){ mapMode=m; map.setStyle(styleFor(m),{diff:false}); startWatch(); }   /* diff:false = ricarica completa: scatta style.load e ensureOverlays ricrea i layer */
+map.on('sourcedata',e=>{ if(e.sourceId!==watch.src||!e.tile||watch.ok) return; watch.ok=1; clearTimeout(watch.timer); mapStatus(MAP_TXT[mapMode]); });
+map.on('error',e=>{ if(!watch.src||!e||(e.sourceId&&e.sourceId!==watch.src)||watch.ok) return;
+  if(!e.sourceId&&!(e.tile)) return;   /* errori non legati alla sorgente: ignorati */
+  if(++watch.err>=5) mapFail(watch.err+' errori di tile senza successi'); });
+startWatch();
 
 function arrowImage(){ const s=24,c=document.createElement('canvas'); c.width=c.height=s; const g=c.getContext('2d');   /* freccia bianca con bordo scuro, punta a destra (= verso della linea) */
   g.beginPath(); g.moveTo(21,12); g.lineTo(5,4); g.lineTo(10,12); g.lineTo(5,20); g.closePath();
@@ -342,14 +376,8 @@ function addRadar(){ if(!radarCfg||map.getSource('radar')) return;
 /* Idempotente: (ri)crea sorgenti e layer personalizzati; va richiamata a ogni caricamento stile (style.load). */
 function ensureOverlays(){
   const style=map.getStyle(); if(!style||!style.layers) return;
-  const firstSym=style.layers.find(l=>l.type==='symbol')?.id;   /* traccia sotto le etichette, come Google Maps */
+  const firstSym=beforeLabel();   /* traccia sotto le etichette, come Google Maps */
   if(!map.hasImage('route-arrow')) map.addImage('route-arrow',arrowImage());
-  if(ONLINE&&!map.getLayer('bike-lanes')){
-    const vs=Object.entries(style.sources||{}).find(([,v])=>v.type==='vector');
-    if(vs){ try{ map.addLayer({id:'bike-lanes',type:'line',source:vs[0],'source-layer':'transportation',
-      filter:['all',['==',['get','class'],'path'],['==',['get','subclass'],'cycleway']],
-      layout:{'line-cap':'round','line-join':'round'},
-      paint:{'line-color':'#0a8f6a','line-opacity':.9,'line-width':['interpolate',['linear'],['zoom'],10,1,14,2.5,18,6]}},firstSym); }catch(e){ console.warn('bike-lanes',e); } } }
   if(!map.getSource('route')) map.addSource('route',{type:'geojson',lineMetrics:true,data:{type:'FeatureCollection',features:[]}});
   if(!map.getSource('route-steps')) map.addSource('route-steps',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
   if(!map.getLayer('route-casing')) map.addLayer({id:'route-casing',type:'line',source:'route',layout:{'line-cap':'round','line-join':'round'},
@@ -358,9 +386,9 @@ function ensureOverlays(){
   if(!map.getLayer('route-line')) map.addLayer({id:'route-line',type:'line',source:'route',layout:{'line-cap':'round','line-join':'round'},
     paint:{'line-width':['interpolate',['linear'],['zoom'],10,5,16,12],'line-gradient':['interpolate',['linear'],['line-progress'],0,css('none'),1,css('none')]}},firstSym);
   if(!map.getLayer('route-arrows')) map.addLayer({id:'route-arrows',type:'symbol',source:'route',
-    layout:{'symbol-placement':'line','symbol-spacing':90,'icon-image':'route-arrow','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-rotation-alignment':'map','icon-size':['interpolate',['linear'],['zoom'],10,.7,16,1.1]}});
+    layout:{'symbol-placement':'line','symbol-spacing':90,'icon-image':'route-arrow','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-rotation-alignment':'map','icon-size':['interpolate',['linear'],['zoom'],10,.7,16,1.1]}},firstSym);
   if(!map.getLayer('route-steps')) map.addLayer({id:'route-steps',type:'circle',source:'route-steps',
-    paint:{'circle-radius':['interpolate',['linear'],['zoom'],12,3,17,6],'circle-color':'#ffffff','circle-stroke-color':'#14202b','circle-stroke-width':2}});
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],12,3,17,6],'circle-color':'#ffffff','circle-stroke-color':'#14202b','circle-stroke-width':2}},firstSym);
   addRadar();
   if(st.res) paintRoute(st.res);   /* ripristina i dati della rotta dopo un cambio stile */
 }
@@ -375,14 +403,10 @@ ready.then(()=>{
     const el=document.createElement('div'); el.textContent=n; el.style.cssText=`font:600 12px var(--body);color:${n==='Arno'?css('accent'):css('muted')};pointer-events:none;transform:translateY(-26px)`;
     new maplibregl.Marker({element:el}).setLngLat([lo,la]).addTo(map); }); }
 });
-/* Toggle mappa scura (solo online) */
+/* Toggle mappa scura (solo online): ricarica lo stile locale col tema scelto */
 const bDark=$('bDark');
-if(ONLINE){ bDark.hidden=false; darkMap=(curStyle==='fiord'); bDark.setAttribute('aria-pressed',darkMap);
-  bDark.onclick=async()=>{ const want=!darkMap, target=want?'fiord':'liberty'; bDark.disabled=true;
-    const ok=await fetch(styleUrl(target),{signal:AbortSignal.timeout(4000)}).then(r=>r.ok).catch(()=>false); bDark.disabled=false;
-    if(!ok) return status('Lo stile della mappa non è raggiungibile ora. Riprova tra poco.',true);   /* non cambio stile se non posso caricarlo */
-    darkMap=want; LS.set('sotr.dark',darkMap); curStyle=target; bDark.setAttribute('aria-pressed',darkMap);
-    map.setStyle(styleUrl(curStyle),{diff:false}); }; }   /* diff:false = ricarica completa, così scatta style.load e ensureOverlays ricrea i layer */
+if(ONLINE){ bDark.hidden=false; bDark.setAttribute('aria-pressed',darkMap);
+  bDark.onclick=()=>{ darkMap=!darkMap; LS.set('sotr.dark',darkMap); bDark.setAttribute('aria-pressed',darkMap); setMapMode(mapMode==='none'?'none':mapMode); }; }
 
 let pinA=null,pinB=null,rider=null,popup=null;
 function pinEl(t){ const d=document.createElement('div'); d.className='pin'; d.textContent=t;
@@ -401,40 +425,31 @@ map.on('click',e=>{ if(e.defaultPrevented) return; if(!ONLINE) return status('In
 map.on('contextmenu',e=>{ if(!ONLINE) return; e.preventDefault?.(); setPoint('a',e.lngLat.wrap()); reverse('a'); });
 
 /* ---------- Ricerca indirizzi (Photon, open source su dati OSM) ---------- */
-const fmtFeat=f=>{const p=f.properties;return [p.name,p.street&&(p.street+(p.housenumber?' '+p.housenumber:'')),p.city||p.town||p.village,p.country&&p.country!=='Italia'?p.country:null].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(', ');};
 let tmr=null;
 ['a','b'].forEach(w=>{
   const inp=$(w==='a'?'inA':'inB'), sg=$(w==='a'?'sgA':'sgB');
   inp.addEventListener('input',()=>{ clearTimeout(tmr); const q=inp.value.trim(); if(q.length<3){sg.hidden=true;return;}
     tmr=setTimeout(async()=>{ try{
-      const res=await geocode(q);
+      const g=await geocode(q), res=g.results;
       sg.innerHTML=''; res.forEach(r=>{ const b=document.createElement('button'); b.textContent=r.label;
         b.onclick=()=>{ sg.hidden=true; setPoint(w,{lat:r.lat,lng:r.lng},r.label); if(!(st.a&&st.b)) map.flyTo({center:[r.lng,r.lat],zoom:14}); };
         sg.appendChild(b); });
       sg.hidden=!res.length;
-      if(!res.length) status('Nessun risultato per "'+q+'". Prova un altro nome o clicca sulla mappa.',true);
-    }catch(e){ status(ONLINE?'Ricerca indirizzi non raggiungibile ('+(e.message||e)+'). Clicca sulla mappa.':'In anteprima la ricerca indirizzi non è disponibile.',true);} },300); });
+      if(!res.length) status('Nessun risultato per "'+q+'". Prova un altro nome o clicca sulla mappa.',true); else status('Indirizzi: '+g.provider);
+    }catch(e){ status(ONLINE?'Ricerca indirizzi non disponibile ora ('+itReasons(e)+'). Puoi cliccare sulla mappa per scegliere i punti.':'In anteprima la ricerca indirizzi non è disponibile.',true);} },300); });
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); sg.querySelector('button')?.click(); } if(e.key==='Escape') sg.hidden=true; });
   inp.addEventListener('blur',()=>setTimeout(()=>sg.hidden=true,200));
 });
-/* Geocoding: Photon (senza lang: la istanza pubblica accetta solo default/en/de/fr e risponde 400 con it),
-   poi Nominatim OSM come riserva. Entrambi open source su dati OSM. */
-async function getJson(url,ms=8000){ const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),ms);
-  try{ const r=await fetch(url,{signal:ctl.signal}); if(!r.ok) throw new Error('HTTP '+r.status); return await r.json(); } finally{ clearTimeout(t); } }
-async function geocode(q){
-  const c=map.getCenter(), bias=map.getZoom()>=7?`&lat=${c.lat}&lon=${c.lng}`:'';
-  let err;
-  try{ const j=await getJson(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6${bias}`);
-    const out=(j.features||[]).map(f=>({label:fmtFeat(f),lat:f.geometry.coordinates[1],lng:f.geometry.coordinates[0]}));
-    if(out.length) return out; } catch(e){ err=e; }
-  try{ const j=await getJson(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=it&q=${encodeURIComponent(q)}`);
-    return j.map(r=>({label:r.display_name.split(', ').slice(0,3).join(', '),lat:+r.lat,lng:+r.lon})); } catch(e){ throw err||e; }
-}
-async function reverse(w){ const p=st[w];
-  try{ const j=await getJson(`https://photon.komoot.io/reverse?lat=${p.lat}&lon=${p.lng}`);
-    if(j.features?.[0]){ $(w==='a'?'inA':'inB').value=fmtFeat(j.features[0]); return; } }catch{}
-  try{ const j=await getJson(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&accept-language=it&lat=${p.lat}&lon=${p.lng}`);
-    if(j.display_name) $(w==='a'?'inA':'inB').value=j.display_name.split(', ').slice(0,3).join(', '); }catch{} }
+/* Indirizzi e percorso: provider resilienti in providers.js (hedging, timeout, circuit breaker, cache). */
+let providers=null;
+if(ONLINE){ let storage=null; try{ storage=window.sessionStorage; }catch{}
+  providers=sotrCreateProviders({fetch:(...a)=>fetch(...a),storage,now:()=>Date.now()}); }
+/* Motivi di errore dei provider ("route: osrm-fossgis HTTP 503; valhalla timeout") in italiano breve */
+function itReasons(e){ const m=String((e&&e.message)||e||'').replace(/^[a-z]+:\s*/,'');
+  return m.replace(/HTTP (\d+)/g,'errore $1').replace(/timeout/g,'nessuna risposta in tempo').replace(/Failed to fetch|NetworkError[^;]*/g,'rete non raggiungibile').replace(/no results/g,'nessun risultato').replace(/no route/g,'nessun percorso').replace(/risposta non valida/g,'risposta non valida')||'errore sconosciuto'; }
+const geocode=q=>{ const c=map.getCenter(); return providers.geocode(q,map.getZoom()>=7?{lat:c.lat,lng:c.lng}:null); };
+async function reverse(w){ const p=st[w]; if(!providers||!p) return;
+  try{ const r=await providers.reverse(p.lat,p.lng); if(r&&r.label&&st[w]===p) $(w==='a'?'inA':'inB').value=r.label; }catch{} }
 
 /* ---------- Controlli ---------- */
 function status(t,err){ const s=$('status'); s.textContent=t; s.classList.toggle('err',!!err); }
@@ -484,33 +499,11 @@ function pointAt(coords,cum,d){ let i=1; while(i<coords.length-1&&cum[i]<d) i++;
   return {lng:a[0]+f*(b[0]-a[0]),lat:a[1]+f*(b[1]-a[1]),brg:brg(a,b)}; }
 
 /* ---------- Dati ---------- */
-function stepText(s){
-  const m=s.modifier||'', n=s.name?` su ${s.name}`:'', side=/left/.test(m)?'sinistra':'destra';
-  const TURN={left:'Gira a sinistra',right:'Gira a destra','slight left':'Svolta leggermente a sinistra','slight right':'Svolta leggermente a destra','sharp left':'Svolta decisamente a sinistra','sharp right':'Svolta decisamente a destra',straight:'Prosegui dritto',uturn:'Fai inversione'};
-  switch(s.type){
-    case 'depart': return s.name?`Parti su ${s.name}`:'Parti';
-    case 'arrive': return 'Sei arrivato';
-    case 'turn': return (TURN[m]||'Prosegui')+n;
-    case 'new name': case 'continue': return (TURN[m]&&m!=='straight'?TURN[m]:'Prosegui')+n;
-    case 'merge': return 'Immettiti'+n;
-    case 'fork': return (/left|right/.test(m)?`Al bivio tieni la ${side}`:'Al bivio prosegui')+n;
-    case 'end of road': return `Alla fine della strada gira a ${side}`+n;
-    case 'roundabout': case 'rotary': case 'roundabout turn': return (s.exit?`Alla rotonda prendi la ${s.exit}ª uscita`:'Alla rotonda prosegui')+n;
-    case 'on ramp': return 'Imbocca la rampa'+n;
-    case 'off ramp': return 'Prendi l\'uscita'+n;
-    default: return 'Prosegui'+n; }
-}
 /* -> {coords, steps}; steps: [{text,name,dist,lng,lat,type,modifier}] */
 async function getRoute(a,b){
   if(!ONLINE){ const fw=hav([a.lng,a.lat],DEMO_ROUTE[0])<hav([a.lng,a.lat],DEMO_ROUTE.at(-1)); return {coords:fw?DEMO_ROUTE:[...DEMO_ROUTE].reverse(),steps:[]}; }
-  const q=`${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson&steps=true`;
-  for(const base of ['https://routing.openstreetmap.de/routed-bike/route/v1/driving/','https://router.project-osrm.org/route/v1/bike/']){
-    try{ const j=await (await fetch(base+q,{signal:AbortSignal.timeout(20000)})).json();
-      if(j.routes?.length){ const rt=j.routes[0], steps=[];
-        for(const lg of rt.legs||[]) for(const t of lg.steps||[]){ const mv=t.maneuver||{}, loc=mv.location||[]; if(loc.length<2) continue;
-          steps.push({text:stepText({type:mv.type,modifier:mv.modifier,name:t.name,exit:mv.exit}),name:t.name||'',dist:t.distance||0,lng:loc[0],lat:loc[1],type:mv.type,modifier:mv.modifier||''}); }
-        return {coords:rt.geometry.coordinates,steps}; } }catch{} }
-  throw new Error('route');
+  const r=await providers.route(a,b);
+  return {coords:r.coords,steps:r.steps,provider:r.provider};
 }
 const arr=j=>Array.isArray(j)?j:[j];
 async function getWeather(s,total){
@@ -568,8 +561,10 @@ async function run(){
   try{
     const key=[st.a.lat,st.a.lng,st.b.lat,st.b.lng].join();
     if(st.key!==key){
-      status('Calcolo il percorso in bici…'); let coords,steps=[]; st.straight=false;
-      try{ ({coords,steps}=await getRoute(st.a,st.b)); }catch{ coords=greatCircle(st.a,st.b,200); steps=[]; st.straight=true; }
+      status('Calcolo il percorso in bici…'); let coords,steps=[],provider='',failMsg=''; st.straight=false;
+      try{ ({coords,steps,provider=''}=await getRoute(st.a,st.b)); }catch(e){ coords=greatCircle(st.a,st.b,200); steps=[]; st.straight=true;
+        failMsg=/no route/.test(String(e&&e.message))&&!/(HTTP|timeout|Failed|rete)/.test(String(e&&e.message))?'':'Servizi di percorso non raggiungibili ('+itReasons(e)+'). Puoi cliccare sulla mappa per scegliere altri punti.'; }
+      st.provider=provider; st.routeFail=failMsg;
       if(my!==runId) return;
       const route=coords, samples=prep(coords);
       status(`Leggo le previsioni in ${samples.samples.length} punti…`);
@@ -584,7 +579,8 @@ async function run(){
       map.fitBounds(bb,{padding:{top:60,bottom:innerWidth>720?120:Math.round(innerHeight*0.52)+150,left:innerWidth>720?420:40,right:60},duration:900,maxZoom:15});
     }
     render(baseDep(),true);
-    status(st.straight?'Nessun percorso in bici tra questi punti: uso la linea d\'aria.':'');
+    if(st.straight) status(st.routeFail||'Nessun percorso in bici tra questi punti: uso la linea d\'aria.',!!st.routeFail);
+    else status(st.provider?'Percorso: '+st.provider.replace(/ FOSSGIS.*$| \(.*$/,''):'');
   }catch(e){ console.error(e);
     status('Non riesco a leggere le previsioni. Controlla la connessione e riprova.',true); }
 }
@@ -914,6 +910,47 @@ function shInit(){
 shInit();
 
 
+/* ---------- Stato servizi (diagnostica) ---------- */
+const HL_PROBES=[
+  ['Mappa: TileJSON OpenFreeMap','map','https://tiles.openfreemap.org/planet','json'],
+  ['Mappa: glifi OpenFreeMap','map','https://tiles.openfreemap.org/fonts/Noto%20Sans%20Regular/0-255.pbf','bin'],
+  ['Mappa: tile raster OSM','map','https://tile.openstreetmap.org/5/16/11.png','img'],
+  ['Meteo: Open-Meteo','weather','https://api.open-meteo.com/v1/forecast?latitude=43.6&longitude=11.4&hourly=temperature_2m&forecast_days=1','json'],
+  ['Soste: Overpass','overpass','https://overpass-api.de/api/status','text']];
+let hlRows=[], hlBusy=false;
+const hlShort=e=>{ const m=String((e&&e.message)||e||''); return /timeout|abort/i.test(m)||e?.name==='AbortError'?'timeout':/Failed to fetch|NetworkError|Load failed/i.test(m)?'rete o CORS':m.slice(0,80); };
+async function hlProbe([name,kind,url,how]){ const t0=performance.now(), ms=()=>Math.round(performance.now()-t0);
+  try{
+    if(how==='img'){ await new Promise((res,rej)=>{ const im=new Image(); const t=setTimeout(()=>{ im.src=''; rej(new Error('timeout')); },8000);
+      im.onload=()=>{ clearTimeout(t); res(); }; im.onerror=()=>{ clearTimeout(t); rej(new Error('immagine non caricata')); }; im.src=url+(url.includes('?')?'&':'?')+'_='+Date.now(); });
+    } else { const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),8000);
+      try{ const r=await fetch(url,{signal:ctl.signal,cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status);
+        if(how==='json') await r.json(); else if(how==='bin') await r.arrayBuffer(); else await r.text(); } finally{ clearTimeout(t); } }
+    return {name,kind,ok:true,ms:ms()};
+  }catch(e){ return {name,kind,ok:false,ms:ms(),error:hlShort(e)}; } }
+function hlRender(){ const ul=$('hlList'); ul.replaceChildren();
+  hlRows.forEach(r=>{ const li=document.createElement('li'); li.className='hl-row'; li.dataset.ok=String(r.ok);
+    const d=document.createElement('span'); d.className='hl-dot'; d.setAttribute('aria-hidden','true');
+    const n=document.createElement('span'); n.className='hl-name'; n.textContent=r.name;
+    const x=document.createElement('span'); x.className='hl-res'; x.textContent=(r.ok?'OK':'KO')+' · '+r.ms+' ms';
+    li.append(d,n,x); if(r.error){ const e=document.createElement('span'); e.className='hl-err'; e.textContent=r.error; li.appendChild(e); }
+    ul.appendChild(li); }); }
+async function hlRun(){ if(hlBusy) return; hlBusy=true; const note=$('hlNote'); note.textContent='controllo…'; $('hlRun').disabled=true;
+  try{
+    if(!ONLINE){ hlRows=[]; hlRender(); note.textContent='non disponibile in anteprima'; return; }
+    const prov=providers.health().then(a=>Array.isArray(a)?a:[]).catch(()=>[]);
+    const [pv,...pr]=await Promise.all([prov,...HL_PROBES.map(hlProbe)]);
+    hlRows=[...pv.map(r=>({...r,name:({'photon':'Indirizzi: Photon','nominatim':'Indirizzi: Nominatim','osrm-fossgis':'Percorso: OSRM FOSSGIS','valhalla':'Percorso: Valhalla','osrm-demo':'Percorso: OSRM demo'})[r.name]||r.name})),...pr];
+    hlRender(); const bad=hlRows.filter(r=>!r.ok).length; note.textContent=bad?bad+' su '+hlRows.length+' non raggiungibili':'tutto raggiungibile';
+  }catch(e){ note.textContent='errore nel controllo'; } finally{ hlBusy=false; $('hlRun').disabled=false; } }
+function hlSetOpen(on){ $('healthBox').hidden=!on; $('bHealth').setAttribute('aria-pressed',on?'true':'false'); if(on){ hlRun(); $('healthBox').scrollIntoView?.({block:'nearest'}); } }
+$('bHealth').onclick=()=>hlSetOpen($('healthBox').hidden);
+$('hlRun').onclick=hlRun;
+$('hlCopy').onclick=async()=>{ const txt=JSON.stringify({date:new Date().toISOString(),userAgent:navigator.userAgent,map:mapMode,rows:hlRows},null,2);
+  try{ await navigator.clipboard.writeText(txt); status('Diagnostica copiata negli appunti.'); }
+  catch{ try{ const ta=document.createElement('textarea'); ta.value=txt; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); ta.remove(); status(ok?'Diagnostica copiata negli appunti.':'Copia non riuscita: selezionala a mano.',!ok); }catch{ status('Copia non riuscita.',true); } } };
+try{ if(new URLSearchParams(location.search).has('diag')) hlSetOpen(true); }catch{}
+
 /* ---------- Esempi nel mondo ---------- */
 const PRESETS=[['Firenze → Roma',43.7696,11.2558,41.8933,12.4829],['Londra → Parigi',51.5074,-0.1278,48.8566,2.3522],['New York → Los Angeles',40.7128,-74.006,34.0522,-118.2437],['Lisbona → Tokyo',38.7223,-9.1393,35.6762,139.6503],['Sydney → Auckland',-33.8688,151.2093,-36.8485,174.7633]];
 if(ONLINE){ $('chips').hidden=false; $('hintTxt').hidden=false;
@@ -921,7 +958,7 @@ if(ONLINE){ $('chips').hidden=false; $('hintTxt').hidden=false;
     b.onclick=()=>{ const [x,y]=n.split(' → '); st.a=null; st.b=null; setPoint('a',{lat:la,lng:lo},x); setPoint('b',{lat:lb,lng:lob},y); }; $('chips').appendChild(b); }); }
 
 /* ---------- Avvio ---------- */
-$('banner').hidden=ONLINE; if(!ONLINE&&probe.why) $('banner').textContent+=` (Motivo: ${probe.why}.)`;
+$('banner').hidden=ONLINE;
 if(FORCE_DEMO) $('banner').textContent='Pagina di esempio: meteo inventato su un tragitto reale. L\'app completa, con mappe e previsioni vere, è il file index.html.';
 defaultWhen();
 const saved=ONLINE?LS.get('sotr.trip'):null;

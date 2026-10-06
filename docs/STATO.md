@@ -44,3 +44,13 @@ Aprire DevTools → Network e annotare status e errori.
 - Beta: due punti qualsiasi del globo.
 - Usare gli agenti (team in `.claude/agents`), anche per la UX.
 - Nome: "State of the Route". Ogni modifica andava ripubblicata anche come artifact Claude: in Claude Code non serve più, a meno che tu lo chieda.
+
+## Aggiornamento 2026-10-07 — servizio mappa potenziato (solo frontend)
+- `src/map-style.js`: stile vettoriale nostro (tipo Google Maps, ciclabili in evidenza) su tile OpenFreeMap + riserva raster OSM. Fallback a runtime: vettoriale → raster → solo tragitto (`window.__SOTR_FALLBACK_MS`, default 12000).
+- `src/providers.js`: geocoding Photon→Nominatim; percorso OSRM bici→Valhalla (GET)→OSRM demo; hedging, timeout, circuit breaker, cache.
+- Pannello "Stato servizi" (`#bHealth`, `?diag`) con "Copia diagnostica".
+- Build: `//@include file.js`; `src/index.html` non gira più senza `npm run build`.
+- Test: `node --test test/*.test.mjs` (21) e `node test/e2e/run.mjs` (16, desktop+mobile, rete simulata).
+- UX: canvas Design "State of the Route UX" (mobile peek/dettaglio/servizi + desktop). NON ancora portata in `src/index.html`.
+- Da verificare nel browser vero: tile OpenFreeMap reali, CORS (glifi, TileJSON, Overpass, Valhalla GET), forma risposte reali Photon/Nominatim/OSRM/Valhalla, tile OSM da file://.
+- TODO: toggle ciclabili (`SOTR_LAYERS.bikeLane*`) non ancora in UI; applicare il Design.

@@ -8,6 +8,7 @@
     "serve": "npx --yes http-server dist -p 5173 -c-1"
   },
   "devDependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^26.4.4",
     "maplibre-gl": "4.7.1"
   }
 }
