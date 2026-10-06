@@ -4,297 +4,438 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>State of the Route</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
-/* Layout: mappa vettoriale a tutto schermo; pannello flottante (desktop a sinistra, mobile bottom sheet); barra "replay" in basso. */
+/* UX "State of the Route": mappa a tutto schermo; desktop = pannello laterale 400px; mobile (<=720px) = barra in alto + bottom sheet a 3 stati (peek/mid/full).
+   Font: Manrope se installato, altrimenti system-ui (nessun caricamento esterno bloccante). */
 :root{
-  --bg:#eef1f4; --panel:#ffffff; --panel-a:rgba(255,255,255,.94); --ink:#14202b; --muted:#5d6b78; --line:#d8dee5;
-  --accent:#1f6feb; --accent-ink:#ffffff; --shadow:0 6px 24px rgba(16,24,32,.18);
-  --dry:#1a7f4f; --light:#946400; --mod:#b45309; --heavy:#c8324a; --none:#6b7885; --dry-map:#2ea36b; --light-map:#e0b20f; --mod-map:#e8730c; --heavy-map:#c8324a;
-  --display:"Unbounded","Arial Black",system-ui,sans-serif;
-  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --ink:#14211B; --ink2:#33433B; --muted:#4A5A52;
+  --accent:#0B6E6E; --accent-ink:#ffffff; --accent-soft:#D6ECEA;
+  --panel:#ffffff; --panel-a:rgba(255,255,255,.96); --surf:#F4F7F4; --chip:#EEF2EE; --bg:#E9EEE8; --line:#E3E9E4; --line2:#B9C5BD; --grip:#C5CEC8;
+  --ok:#1E7A46; --rain:#2A5FD0; --rain2:#6C9BE8; --shelter:#C2570C; --err:#B3261E;
+  --dry:#1E7A46; --light:#2A5FD0; --mod:#1F4DB0; --heavy:#17338A; --none:#5A6A61;
+  --dry-map:#1E7A46; --light-map:#6C9BE8; --mod-map:#2A5FD0; --heavy-map:#1B3A8F;
+  --t-dry:#E3F2E9; --t-light:#E4ECFB; --t-mod:#FDECDD; --t-heavy:#FADBD3; --c-light:#2A5FD0; --c-mod:#9A4308; --c-heavy:#8F1D12;
+  --shadow:0 2px 10px rgba(20,33,27,.18); --shadow-sheet:0 -4px 18px rgba(20,33,27,.2);
+  --body:Manrope,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --display:var(--body); --mono:var(--body);
   color-scheme:light;
 }
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#0c1218; --panel:#121b23; --panel-a:rgba(18,27,35,.94); --ink:#e6edf3; --muted:#8d9aa7; --line:#24313c;
-  --accent:#4c8ff5; --accent-ink:#06101b; --none:#7d8c9a; --heavy:#ff6b81; --dry:#3ec585; --light:#e0b20f; --mod:#f0883e; --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark; } }
-:root[data-theme="dark"]{ --bg:#0c1218; --panel:#121b23; --panel-a:rgba(18,27,35,.94); --ink:#e6edf3; --muted:#8d9aa7; --line:#24313c;
-  --accent:#4c8ff5; --accent-ink:#06101b; --none:#7d8c9a; --heavy:#ff6b81; --dry:#3ec585; --light:#e0b20f; --mod:#f0883e; --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark; }
-
+:root[data-theme="dark"]{
+  --ink:#E8F0EA; --ink2:#C9D6CD; --muted:#A5B5AB;
+  --accent:#4FC3BE; --accent-ink:#06201F; --accent-soft:#1B3B3A;
+  --panel:#16211B; --panel-a:rgba(22,33,27,.96); --surf:#1E2B24; --chip:#26352C; --bg:#0C1411; --line:#2A3A31; --line2:#4F6458; --grip:#4A5E52;
+  --ok:#5BD08A; --rain:#7FA6F0; --rain2:#6C9BE8; --shelter:#F08A4B; --err:#FF8A7A;
+  --dry:#5BD08A; --light:#8FB4F2; --mod:#9DBBF5; --heavy:#B8CDFA; --none:#9AAAA0;
+  --dry-map:#3FB871; --light-map:#6C9BE8; --mod-map:#4C82E8; --heavy-map:#8DB0F5;
+  --t-dry:#1B3326; --t-light:#1C2A45; --t-mod:#3A2A1C; --t-heavy:#3F211D; --c-light:#9DBBF5; --c-mod:#F2A56E; --c-heavy:#FF9F90;
+  --shadow:0 2px 10px rgba(0,0,0,.5); --shadow-sheet:0 -4px 18px rgba(0,0,0,.55);
+  color-scheme:dark;
+}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--body);overflow:hidden}
-#map{position:fixed;inset:0}
-
-.panel{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:12px;width:380px;max-height:calc(100% - 110px);overflow-y:auto;
-  background:var(--panel-a);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
-  padding:16px;display:flex;flex-direction:column;gap:14px;z-index:2}
-@media (max-width:720px){
-  .panel{top:auto;bottom:calc(112px + env(safe-area-inset-bottom,0px));left:8px;right:8px;width:auto;max-height:44vh;border-radius:16px;padding:12px;gap:10px}
-}
-#when{min-width:200px}
-.brand{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.beta{font:600 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;vertical-align:middle;margin-left:6px;padding:2px 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink)}
+body{background:var(--bg);color:var(--ink);font:15px/1.4 var(--body);overflow:hidden;-webkit-text-size-adjust:100%}
+button,input,summary{font-family:inherit}
+button{color:inherit}
 [hidden]{display:none!important}
-.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
-.chip{white-space:nowrap;flex:0 0 auto}
-.chip{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:5px 10px;font:500 12px var(--body);cursor:pointer}
-.chip:hover{border-color:var(--muted)}
-.hint{font-size:12px;color:var(--muted)}
-.brand h1{font:700 17px/1 var(--display);letter-spacing:-.01em;margin:0}
-.iconbtns{display:flex;gap:6px}
-.ib{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;height:32px;min-width:32px;padding:0 8px;font:600 12px var(--body);cursor:pointer}
-.ib[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
-.lbl{font:600 11px var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.field{display:flex;flex-direction:column;gap:6px}
-.pt{display:grid;grid-template-columns:22px 1fr;align-items:center;gap:8px;position:relative}
-.dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:700 11px var(--mono)}
-.dot.a{background:var(--ink);color:var(--panel)} .dot.b{background:var(--accent);color:var(--accent-ink)}
-input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-width:0}
-input[type=range]{padding:0;accent-color:var(--accent)}
-input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.sugg{position:absolute;left:30px;right:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);z-index:5;overflow:hidden}
-.sugg button{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);padding:9px 10px;font:13px var(--body);cursor:pointer}
-.sugg button:hover,.sugg button:focus-visible{background:var(--bg)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.row > *{min-width:0}
-.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:0 0 auto}
-.seg button{border:0;background:transparent;color:var(--muted);padding:8px 10px;font:500 13px var(--body);cursor:pointer}
-.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
-.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 10px;font:500 13px var(--body);cursor:pointer}
-.btn:hover{border-color:var(--muted)}
-.mono{font:500 13px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
-.status{font:500 12px var(--mono);color:var(--muted)} .status.err{color:var(--heavy)}
+#map{position:fixed;inset:0}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+svg.i{display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-.verdict{border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--bg);border-left:6px solid var(--none)}
-.verdict[data-level="dry"]{border-left-color:var(--dry)} .verdict[data-level="light"]{border-left-color:var(--light)}
-.verdict[data-level="mod"]{border-left-color:var(--mod)} .verdict[data-level="heavy"]{border-left-color:var(--heavy)}
-.verdict h2{font:700 18px/1.15 var(--display);margin:0;text-wrap:balance}
-.verdict p{margin:0;color:var(--muted)}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.stat{display:flex;flex-direction:column;gap:2px}
-.stat b{font:500 14px var(--mono);font-variant-numeric:tabular-nums}
-.stat span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.bars{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:3px;align-items:end;height:76px;margin-top:8px}
-.bar{position:relative;border:0;padding:0;cursor:pointer;background:transparent;height:100%;display:flex;flex-direction:column;justify-content:flex-end}
-.bar i{display:block;border-radius:3px 3px 0 0;min-height:4px}
-.bar[aria-pressed="true"]{outline:2px solid var(--ink);outline-offset:2px;border-radius:4px}
-.bar .best{position:absolute;top:-4px;left:50%;transform:translateX(-50%);font:600 10px var(--mono);color:var(--dry)}
-.ticks{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:3px;font:400 10px var(--mono);color:var(--muted);text-align:center}
-.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
-.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--c)}
-.banner{font-size:12px;color:var(--mod);border:1px solid var(--mod);border-radius:10px;padding:8px 10px}
-.dir{border:1px solid var(--line);border-radius:12px;background:var(--bg)}
-.dir summary{cursor:pointer;padding:9px 12px;font:600 12px var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);list-style-position:inside}
-.dir[open] summary{border-bottom:1px solid var(--line);color:var(--ink)}
-.dir ol{list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;overscroll-behavior:contain}
-.dir li+li{border-top:1px solid var(--line)}
-.dir li button{display:flex;justify-content:space-between;align-items:baseline;gap:10px;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);padding:8px 12px;font:13px/1.35 var(--body);cursor:pointer}
-.dir li button:hover,.dir li button:focus-visible{background:var(--panel)}
-.dir li button i{font:normal 500 12px var(--mono);color:var(--muted);white-space:nowrap;flex:0 0 auto}
-.dir .more{padding:8px 12px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line)}
-.sources{font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+/* ---------- Pannello (desktop: laterale 400px) ---------- */
+.panel{position:fixed;top:0;left:0;bottom:0;width:400px;z-index:4;overflow-y:auto;background:var(--panel);border-right:1px solid var(--line);
+  padding:20px;display:flex;flex-direction:column;gap:16px}
+.sheet-head,.sheet-body{display:contents}
+.grab,.minibars,.topbar{display:none}
+.brand{display:flex;align-items:center;gap:8px;margin:0}
+.brand h1{font:800 22px/1.1 var(--body);letter-spacing:-.01em;margin:0}
+.beta{font:700 10px var(--body);letter-spacing:.1em;text-transform:uppercase;padding:3px 7px;border-radius:999px;background:var(--accent);color:var(--accent-ink)}
+@media (min-width:721px){
+  .brand{order:0}.banner{order:-1}.s-form{order:1}.verdict{order:4}#winBox{order:5}.stats{order:6}.qrow{order:7}.whenrow{order:8}
+  #shelterBox{order:9}.dir{order:10}.opts{order:11}#status{order:12}.legend{order:13}.src{order:14}
+}
+
+/* ---------- Form ---------- */
+.lbl{font:700 13px var(--body);text-transform:uppercase;letter-spacing:.04em;color:var(--ink2)}
+.hint{font-size:13px;color:var(--muted)}
+.s-form{display:flex;flex-direction:column;gap:8px;min-width:0}
+.pt{display:grid;grid-template-columns:24px 1fr;align-items:center;gap:10px;position:relative}
+.dot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:800 12px var(--body)}
+.dot.a{background:var(--ink);color:var(--panel)} .dot.b{background:var(--accent);color:var(--accent-ink)}
+input{font:500 15px var(--body);color:var(--ink);background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:0 12px;height:44px;width:100%;min-width:0}
+input::placeholder{color:var(--muted);opacity:1}
+input[type=range]{padding:0;height:44px;accent-color:var(--accent);border:0;background:transparent}
+.sugg{position:absolute;left:34px;right:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);z-index:5;overflow:hidden}
+.sugg button{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);padding:12px;min-height:44px;font:500 14px var(--body);cursor:pointer}
+.sugg button:hover,.sugg button:focus-visible{background:var(--surf)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{min-width:0}
+.btn,.chip,.seg button{min-height:44px;border:0;background:var(--chip);color:var(--ink);border-radius:12px;padding:0 14px;font:700 14px var(--body);cursor:pointer}
+.btn:hover,.chip:hover{background:var(--line)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.pri{background:var(--accent);color:var(--accent-ink)}
+.btn.dark{background:var(--ink);color:var(--panel)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.ex .chips{margin-top:2px}
+.chip{white-space:nowrap;flex:0 0 auto;border-radius:999px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.seg{display:flex;background:var(--chip);border-radius:12px;flex:0 0 auto;overflow:hidden}
+.seg button{background:transparent;color:var(--muted);min-height:44px;padding:0 14px;border-radius:12px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.whenrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.whenrow input{flex:1 1 180px;width:auto}
+.mono{font:700 14px var(--body);font-variant-numeric:tabular-nums;white-space:nowrap}
+.status{font:600 13px var(--body);color:var(--muted)} .status.err{color:var(--err)}
+.status:empty{display:none}
+.opts>summary,.src>summary{cursor:pointer;color:var(--ink2);font:700 13px var(--body);min-height:44px;display:flex;align-items:center}
+.opts .row{margin-top:4px}
+.opts>summary::before,.src>summary::before{content:"▸";margin-right:8px;font-size:12px}
+.opts[open]>summary::before,.src[open]>summary::before{content:"▾"}
+.qrow{display:flex;gap:8px;flex-wrap:wrap}
+#bShelter{display:inline-flex;align-items:center;gap:8px}
+.banner{font:500 13px/1.4 var(--body);color:var(--c-mod);background:var(--t-mod);border-radius:12px;padding:10px 12px}
+
+/* ---------- Pulsanti flottanti sulla mappa ---------- */
+.mapctl{position:fixed;right:16px;top:16px;display:flex;flex-direction:column;gap:8px;z-index:3}
+.mc{width:48px;height:48px;border:0;border-radius:14px;background:var(--panel);color:var(--ink);box-shadow:var(--shadow);display:grid;place-items:center;cursor:pointer;font:800 12px var(--body);padding:0}
+.mc[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+#bBike{color:var(--muted)}
+#bBike[aria-pressed="true"]{background:var(--t-dry);color:var(--ok);box-shadow:var(--shadow),inset 0 0 0 2px var(--ok)}
+.mc:disabled{opacity:.5;cursor:default}
+.mapstat{position:fixed;left:416px;top:16px;z-index:3;margin:0;max-width:calc(100% - 540px);background:var(--panel-a);color:var(--ink2);border-radius:10px;padding:6px 12px;font:600 12px var(--body);box-shadow:var(--shadow)}
+.mapstat.err{color:var(--err)}
+.toast{position:fixed;left:420px;bottom:84px;z-index:6;max-width:min(520px,calc(100% - 440px));background:var(--ink);color:var(--panel);border-radius:12px;padding:10px 14px;font:600 13px/1.35 var(--body);box-shadow:var(--shadow)}
+
+/* ---------- Verdetto ---------- */
+.verdict{display:flex;align-items:center;gap:14px;min-width:0;margin:0;padding:14px;border-radius:18px;background:var(--vt,var(--surf));--vc:var(--muted)}
+.verdict[data-level="dry"]{--vt:var(--t-dry);--vc:var(--ok)} .verdict[data-level="light"]{--vt:var(--t-light);--vc:var(--c-light)}
+.verdict[data-level="mod"]{--vt:var(--t-mod);--vc:var(--c-mod)} .verdict[data-level="heavy"]{--vt:var(--t-heavy);--vc:var(--c-heavy)}
+.vico{flex:0 0 56px;width:56px;height:56px;border-radius:16px;background:var(--panel);color:var(--vc);display:grid;place-items:center}
+.vico svg{display:none}
+.verdict[data-level="dry"] .vi-ok,.verdict[data-level="light"] .vi-drop,.verdict[data-level="mod"] .vi-umb,.verdict[data-level="heavy"] .vi-umb,.verdict[data-level="none"] .vi-none{display:block}
+.vtxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.verdict h2{margin:0;font:800 20px/1.15 var(--body);text-wrap:balance}
+.verdict p{margin:0;font:500 14px/1.35 var(--body);color:var(--ink2)}
+.vside{flex:0 0 auto;text-align:right;display:flex;flex-direction:column;font-variant-numeric:tabular-nums}
+.vside b{font:800 17px var(--body)} .vside span{font:500 13px var(--body);color:var(--ink2)}
+.vside:empty,.vside b:empty,.vside span:empty{display:none}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;background:var(--surf);border-radius:14px;padding:10px 12px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font:800 15px/1.2 var(--body);font-variant-numeric:tabular-nums}
+.stat span{font:600 11px var(--body);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+
+/* ---------- Barre "quando partire" ---------- */
+#winBox{display:flex;flex-direction:column;gap:8px;min-width:0}
+.bars{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(48px,1fr);gap:6px;align-items:end;height:112px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;scrollbar-width:thin}
+.bar{position:relative;height:100%;min-height:44px;border:0;border-radius:12px;background:var(--surf);padding:0 0 6px;cursor:pointer;scroll-snap-align:center;
+  display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
+.bar i{display:block;width:60%;border-radius:4px;min-height:4px;flex:0 0 auto}
+.bar small{font:700 13px/1.1 var(--body);color:var(--ink);white-space:nowrap;display:block;height:auto}
+.bar[aria-pressed="true"]{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.bar .badge{position:absolute;top:4px;left:50%;transform:translateX(-50%);font:800 11px var(--body);color:#fff;background:var(--ok);border-radius:999px;padding:1px 6px;white-space:nowrap}
+.cap{margin:0;font-size:13px;color:var(--muted)}
+.ticks{display:none}
+.legend{display:flex;gap:6px 14px;flex-wrap:wrap;font:600 12.5px var(--body);color:var(--ink2)}
+.legend span::before{content:"";display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+
+/* ---------- Indicazioni ---------- */
+.dir{border-radius:14px;background:var(--surf)}
+.dir summary{cursor:pointer;padding:0 14px;min-height:44px;display:flex;align-items:center;font:700 13px var(--body);text-transform:uppercase;letter-spacing:.04em;color:var(--ink2)}
+.dir ol{list-style:none;counter-reset:s;margin:0;padding:0 6px 6px;max-height:260px;overflow-y:auto;overscroll-behavior:contain}
+.dir li button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;text-align:left;border:0;border-radius:10px;background:transparent;color:var(--ink);padding:4px 8px;font:500 15px/1.3 var(--body);cursor:pointer}
+.dir li button::before{counter-increment:s;content:counter(s);flex:0 0 28px;height:28px;border-radius:14px;background:var(--chip);display:grid;place-items:center;font:800 13px var(--body);font-variant-numeric:tabular-nums}
+.dir li button i{margin-left:auto;font:normal 500 13px var(--body);color:var(--muted);white-space:nowrap;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.dir li button:hover{background:var(--chip)}
+.dir .more{padding:8px 12px;font-size:13px;color:var(--muted)}
+.sources{font-size:12.5px;color:var(--muted);padding:4px 0 8px}
 .sources a{color:inherit}
 
-/* Replay del viaggio */
+/* ---------- Replay ---------- */
 .trip{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(640px,calc(100% - 16px));
-  background:var(--panel-a);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
-  padding:10px 12px;display:flex;align-items:center;gap:12px;z-index:2}
-@media (min-width:721px){.trip{left:calc(50% + 200px);width:min(560px,calc(100% - 420px))}}
-.play{width:40px;height:40px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font:700 15px var(--body);cursor:pointer;flex:0 0 auto}
-.trip .info{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
-.trip .now{display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font:500 12.5px var(--mono);font-variant-numeric:tabular-nums}
+  background:var(--panel-a);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:8px 12px;display:flex;align-items:center;gap:12px;z-index:2}
+@media (min-width:721px){.trip{left:calc(50% + 200px);width:min(560px,calc(100% - 440px))}}
+.play{width:44px;height:44px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font:800 15px var(--body);cursor:pointer;flex:0 0 auto}
+.trip .info{display:flex;flex-direction:column;gap:0;flex:1;min-width:0}
+.trip .now{display:flex;justify-content:space-between;gap:8px;white-space:nowrap;font:700 13px var(--body);font-variant-numeric:tabular-nums}
 .trip .now em{font-style:normal;color:var(--muted)}
 
-.pin{z-index:3;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--mono);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:grab}
-.rider{width:18px;height:18px;border-radius:50%;background:var(--accent);border:4px solid #fff;box-shadow:0 0 0 6px rgba(31,111,235,.25),0 2px 8px rgba(0,0,0,.4)}
-.maplibregl-popup-content{background:var(--panel);color:var(--ink);font:12.5px var(--body);border-radius:10px;box-shadow:var(--shadow)}
+/* ---------- Mappa: marker e popup ---------- */
+.pin{z-index:3;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:800 13px var(--body);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:grab}
+.pin::after{content:"";position:absolute;inset:-8px;border-radius:50%}
+.rider{width:18px;height:18px;border-radius:50%;background:var(--accent);border:4px solid #fff;box-shadow:0 0 0 6px rgba(11,110,110,.28),0 2px 8px rgba(0,0,0,.4)}
+.maplibregl-popup-content{background:var(--panel);color:var(--ink);font:13px var(--body);border-radius:12px;box-shadow:var(--shadow)}
 .maplibregl-popup-tip{display:none}
 .maplibregl-ctrl-bottom-right{bottom:84px}
-@media (max-width:720px){.maplibregl-ctrl-bottom-right{bottom:0}}
-@media (max-width:720px){.maplibregl-ctrl-top-right{top:env(safe-area-inset-top,0px)}}
+@media (min-width:721px){.maplibregl-ctrl-top-right{top:300px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-/* Soste: usa solo i token del tema; chiaro/scuro automatici */
+
+/* ---------- Soste ---------- */
 .sh-box{display:flex;flex-direction:column;gap:10px;min-width:0}
 .sh-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.sh-title{margin:0;font:600 11px var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
-.sh-note{font:500 11px var(--mono);color:var(--muted);text-align:right}
+.sh-title{margin:0;font:700 13px var(--body);text-transform:uppercase;letter-spacing:.04em;color:var(--ink2)}
+.sh-note{font:600 13px var(--body);color:var(--muted);text-align:right}
 .sh-filters{display:flex;flex-wrap:wrap;gap:6px}
-.sh-chip{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:5px 12px;min-height:32px;font:500 12px var(--body);cursor:pointer}
-.sh-chip:hover{border-color:var(--muted)}
-.sh-chip[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
-.sh-chip:focus-visible,.sh-main:focus-visible,.sh-osm:focus-visible,.sh-pin:focus-visible,.sh-credit a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-
+.sh-chip{border:0;background:var(--chip);color:var(--ink);border-radius:999px;padding:0 14px;min-height:44px;font:700 14px var(--body);cursor:pointer}
+.sh-chip[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
 .sh-list{display:flex;flex-direction:column;gap:14px;min-width:0}
-.sh-group{display:flex;flex-direction:column;gap:6px;min-width:0}
-.sh-gh{margin:0;padding:7px 10px;border-radius:8px;background:var(--bg);border-left:5px solid var(--mod);font:600 12.5px/1.3 var(--body);text-wrap:balance}
-.sh-group[data-kind="dry"] .sh-gh{border-left-color:var(--dry)}
-.sh-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.sh-item{border:1px solid var(--line);border-radius:10px;background:var(--panel);display:flex;flex-direction:column;min-width:0}
-.sh-main{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);font:inherit;padding:9px 10px 4px;border-radius:10px 10px 0 0;cursor:pointer}
-.sh-main:hover{background:var(--bg)}
+.sh-group{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sh-gh{margin:0;padding:8px 12px;border-radius:12px;background:var(--t-light);color:var(--ink);font:700 13px/1.3 var(--body);text-wrap:balance}
+.sh-group[data-kind="dry"] .sh-gh{background:var(--t-dry)}
+.sh-ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.sh-item{border-radius:14px;background:var(--surf);display:flex;flex-direction:column;min-width:0}
+.sh-main{display:flex;gap:12px;align-items:flex-start;width:100%;min-height:56px;text-align:left;border:0;background:transparent;color:var(--ink);font:inherit;padding:10px 12px 6px;border-radius:14px 14px 0 0;cursor:pointer}
+.sh-main:hover{background:var(--chip)}
 .sh-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
-.sh-name{font:600 13.5px/1.25 var(--body);overflow-wrap:anywhere}
-.sh-type{font-size:11.5px;color:var(--muted)}
-.sh-meta{font:500 11.5px/1.35 var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
-.sh-wait{font-size:12.5px;line-height:1.35}
-.sh-wait::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mod);vertical-align:0}
-.sh-wait[data-kind="dry"]::before{background:var(--dry)}
-.sh-wait[data-kind="nodata"]::before{background:var(--none)}
-.sh-wait[data-kind="long"]::before{background:var(--heavy)}
-.sh-hours{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
-.sh-osm{display:inline-block;margin:0 10px 8px 46px;font-size:11.5px;color:var(--accent);text-underline-offset:2px}
-.sh-empty{margin:0;font-size:12.5px;color:var(--muted)}
-.sh-credit{margin:0;font-size:10.5px;line-height:1.4;color:var(--muted)}
+.sh-name{font:700 15px/1.25 var(--body);overflow-wrap:anywhere}
+.sh-type{font-size:13px;color:var(--muted)}
+.sh-meta{font:500 13px/1.35 var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
+.sh-wait{font:500 13.5px/1.35 var(--body)}
+.sh-wait::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--rain)}
+.sh-wait[data-kind="dry"]::before{background:var(--ok)} .sh-wait[data-kind="nodata"]::before{background:var(--none)} .sh-wait[data-kind="long"]::before{background:var(--err)}
+.sh-hours{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.sh-osm{display:inline-flex;align-items:center;min-height:44px;margin:0 12px 2px 56px;font:600 13px var(--body);color:var(--accent);text-underline-offset:2px}
+.sh-empty{margin:0;font-size:14px;color:var(--muted)}
+.sh-credit{margin:0;font-size:12px;line-height:1.4;color:var(--muted)}
 .sh-credit a{color:inherit}
-
-/* Pallini: stessa grafica nell'elenco e sulla mappa (niente transform: lo usa MapLibre per posizionare i marker) */
-.sh-ico,.sh-pin{width:26px;height:26px;flex:0 0 26px;border-radius:50%;display:grid;place-items:center;padding:0;background:var(--c);color:var(--ci)}
-.sh-ico[data-cat="riparo"],.sh-pin[data-cat="riparo"]{--c:var(--accent);--ci:var(--accent-ink)}
+.sh-ico,.sh-pin{width:36px;height:36px;flex:0 0 36px;border-radius:12px;display:grid;place-items:center;padding:0;background:var(--c);color:var(--ci)}
+.sh-ico[data-cat="riparo"],.sh-pin[data-cat="riparo"]{--c:var(--shelter);--ci:#fff}
 .sh-ico[data-cat="locale"],.sh-pin[data-cat="locale"]{--c:var(--ink);--ci:var(--panel)}
-.sh-ico[data-cat="negozio"],.sh-pin[data-cat="negozio"]{--c:var(--dry);--ci:#fff}
+.sh-ico[data-cat="negozio"],.sh-pin[data-cat="negozio"]{--c:var(--ok);--ci:#fff}
 .sh-ico[data-cat="altro"],.sh-pin[data-cat="altro"]{--c:var(--muted);--ci:var(--panel)}
-.sh-pin{border:2px solid var(--panel);box-shadow:0 2px 6px rgba(0,0,0,.45);cursor:pointer}
+.sh-pin{width:30px;height:30px;flex-basis:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);cursor:pointer;position:relative}
+.sh-pin::after{content:"";position:absolute;inset:-7px;border-radius:50%}
 .sh-pin:hover{box-shadow:0 0 0 3px var(--accent),0 2px 6px rgba(0,0,0,.45)}
 .sh-pin svg,.sh-ico svg{display:block}
-
-/* Popup sulla mappa */
-.sh-pop .maplibregl-popup-content{padding:10px 12px;max-width:270px}
-.sh-pop .maplibregl-popup-close-button{color:var(--ink);font-size:18px;width:28px;height:28px}
+.sh-pop .maplibregl-popup-content{padding:12px 14px;max-width:280px}
+.sh-pop .maplibregl-popup-close-button{color:var(--ink);font-size:20px;width:32px;height:32px}
 .sh-entry{display:flex;flex-direction:column;gap:2px;padding-right:14px}
 .sh-entry .sh-osm{margin:6px 0 0}
-@media (max-width:420px){ .sh-osm{margin-left:10px} }
 
-@media (pointer:coarse){.chip,.btn,.ib,.seg button,.sh-chip{min-height:44px;min-width:44px}.chip{padding:0 14px;font-size:14px}input[type=range]{height:44px}.maplibregl-ctrl-top-right{display:none}#hintTxt{display:none!important}}
-.bar:focus-visible,.chip:focus-visible,input[type=range]:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.bars{grid-auto-columns:minmax(36px,1fr);overflow-x:auto;height:116px;padding:22px 3px 3px;align-items:end}
-.bar{min-width:36px;gap:3px}
-.bar small{font:500 10px var(--mono);color:var(--muted);text-align:center;display:block;height:14px}
-.bar i{flex:0 0 auto}
-.bar .badge{position:absolute;top:0;left:50%;transform:translateX(-50%);font:700 11px var(--body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:1px 6px;white-space:nowrap}
-@media (max-width:720px){
-  .panel{max-height:52vh}
-  .brand{order:-4}
-  .verdict{order:-3;position:sticky;top:-12px;z-index:2;box-shadow:0 4px 10px -6px rgba(0,0,0,.4)}
-  .stats{order:-2}
-  .banner{display:block;font-size:11px;padding:6px 8px}
-}
-/* Stato servizi */
-.hl-box{display:flex;flex-direction:column;gap:10px;min-width:0}
+/* ---------- Stato servizi (schermata) ---------- */
+.hl-box{position:fixed;top:0;bottom:0;left:0;width:400px;z-index:30;background:var(--surf);display:flex;flex-direction:column;min-width:0}
+.hl-top{display:flex;align-items:center;gap:8px;padding:calc(12px + env(safe-area-inset-top,0px)) 12px 8px;background:var(--panel);border-bottom:1px solid var(--line)}
+.hl-top h3{flex:1;margin:0;font:800 20px var(--body)}
+.hl-back{width:44px;height:44px;border:0;border-radius:12px;background:var(--chip);display:grid;place-items:center;cursor:pointer}
+.hl-scroll{flex:1;min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.hl-banner{padding:14px;border-radius:16px;background:var(--t-dry);color:var(--ink);font:800 16px/1.3 var(--body)}
+.hl-banner[data-bad="1"]{background:var(--t-mod);color:var(--c-mod)}
+.hl-banner:empty{display:none}
 .hl-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.hl-row{display:grid;grid-template-columns:12px minmax(0,1fr) auto;align-items:baseline;gap:8px;border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:7px 10px}
-.hl-dot{width:10px;height:10px;border-radius:50%;background:var(--none);align-self:center}
-.hl-row[data-ok="true"] .hl-dot{background:var(--dry)} .hl-row[data-ok="false"] .hl-dot{background:var(--heavy)}
-.hl-name{font:600 12.5px/1.3 var(--body);overflow-wrap:anywhere}
-.hl-res{font:500 11.5px var(--mono);white-space:nowrap}
-.hl-row[data-ok="true"] .hl-res{color:var(--dry)} .hl-row[data-ok="false"] .hl-res{color:var(--heavy)}
-.hl-err{grid-column:2/4;font:11.5px/1.35 var(--mono);color:var(--muted);overflow-wrap:anywhere}
-details.src>summary{cursor:pointer;color:var(--muted);font-size:12px}
+.hl-grp{margin:8px 0 0;font:700 13px var(--body);text-transform:uppercase;letter-spacing:.04em;color:var(--ink2)}
+.hl-grp:first-child{margin-top:0}
+.hl-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;min-height:56px;padding:8px 14px;border-radius:14px;background:var(--panel)}
+.hl-pill{min-width:44px;height:28px;border-radius:14px;display:grid;place-items:center;font:800 13px var(--body);background:var(--t-dry);color:var(--ok)}
+.hl-row[data-ok="false"] .hl-pill{background:var(--t-heavy);color:var(--err)}
+.hl-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hl-name{font:700 15px/1.3 var(--body);overflow-wrap:anywhere}
+.hl-err{font:500 13px/1.3 var(--body);color:var(--muted);overflow-wrap:anywhere}
+.hl-ms{font:700 13px var(--body);font-variant-numeric:tabular-nums;color:var(--ink2);white-space:nowrap}
+.hl-foot{display:flex;gap:8px;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));background:var(--panel);border-top:1px solid var(--line)}
+.hl-foot .btn{flex:1;min-height:52px;font-size:16px;font-weight:800}
+
+/* ---------- Mobile: barra in alto + bottom sheet ---------- */
+@media (max-width:720px){
+  body[data-sheet="peek"]{--sheet-h:calc(140px + env(safe-area-inset-bottom,0px))}
+  body[data-sheet="mid"]{--sheet-h:50vh}
+  body[data-sheet="full"]{--sheet-h:88vh}
+  .topbar{display:flex;flex-direction:column;gap:8px;position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:12px;right:12px;z-index:3}
+  body[data-sheet="full"] .topbar{visibility:hidden}
+  .tb-card{display:flex;align-items:center;gap:8px;background:var(--panel);border-radius:16px;padding:6px 6px 6px 14px;box-shadow:var(--shadow)}
+  .tb-route{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .tb-a{font:500 13px var(--body);color:var(--muted)} .tb-b{font:800 15px var(--body)}
+  .tb-a,.tb-b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tb-ib{width:44px;height:44px;border:0;border-radius:12px;background:var(--chip);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
+  .tb-edit{background:var(--accent);color:var(--accent-ink)}
+  .when-chips{display:flex;gap:8px;overflow-x:auto;padding:0 2px 4px;scrollbar-width:none}
+  .when-panel{display:none}
+  .wchip{flex:0 0 auto;height:44px;padding:0 16px;border:0;border-radius:22px;background:var(--panel);color:var(--ink);font:700 14px var(--body);box-shadow:var(--shadow);cursor:pointer;white-space:nowrap}
+  .wchip[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+  .mapctl{right:12px;top:calc(env(safe-area-inset-top,0px) + 132px)}
+  .mapstat{left:12px;right:auto;top:calc(env(safe-area-inset-top,0px) + 132px);max-width:calc(100% - 88px)}
+  .maplibregl-ctrl-top-right{display:none}
+  .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{bottom:var(--sheet-h)}
+  .toast{left:12px;right:12px;max-width:none;bottom:calc(var(--sheet-h) + 84px)}
+  .trip{left:8px;right:8px;width:auto;transform:none;bottom:calc(var(--sheet-h) + 40px)}
+  body:not([data-sheet="peek"]) .trip{display:none}
+
+  .panel{top:auto;left:0;right:0;bottom:0;width:auto;height:var(--sheet-h);padding:0;gap:0;border:0;border-radius:24px 24px 0 0;box-shadow:var(--shadow-sheet);overflow:hidden;
+    transition:height .26s cubic-bezier(.2,.8,.2,1)}
+  .sheet-head{display:flex;flex-direction:column;gap:6px;flex:0 0 auto;padding:0 16px 6px;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+  .grab{display:block;width:100%;height:22px;border:0;background:none;padding:0;cursor:pointer}
+  .grab span{display:block;width:40px;height:5px;border-radius:3px;background:var(--grip);margin:9px auto 0}
+  .sheet-body{display:flex;flex-direction:column;gap:18px;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;border-top:1px solid var(--line);
+    padding:16px 16px calc(28px + env(safe-area-inset-bottom,0px))}
+  body[data-sheet="peek"] .sheet-body{visibility:hidden;transition:visibility 0s .26s}
+  body[data-sheet="peek"] .sheet-head{padding-bottom:6px}
+  .verdict{padding:0;background:transparent;gap:12px}
+  .vico{flex-basis:52px;width:52px;height:52px;background:var(--vt,var(--chip))}
+  .verdict h2{font-size:19px}
+  body[data-sheet="peek"] .verdict h2{font-size:17px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  body[data-sheet="peek"] .verdict p{font-size:13px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+  .minibars{display:none;align-items:flex-end;gap:4px;height:30px}
+  body[data-sheet="peek"] .minibars{display:flex}
+  .minibars span{flex:1;min-width:0;border-radius:3px 3px 0 0}
+  .minibars span.sel{outline:2px solid var(--accent);outline-offset:1px}
+  .brand{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  input{font-size:16px}
+  .hl-box{width:auto;right:0}
+  #hintTxt{display:none!important}
+}
+@media (max-width:360px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
+<script>/* tema UI prima del primo paint: segue il toggle "Tema scuro" (default chiaro); in anteprima (artifact) segue il sistema */(function(){try{var d=window.__SOTR_DEMO===true?matchMedia('(prefers-color-scheme: dark)').matches:JSON.parse(localStorage.getItem('sotr.dark'))===true;document.documentElement.dataset.theme=d?'dark':'light';}catch(e){document.documentElement.dataset.theme='light';}})();</script>
 </head>
-<body>
+<body data-sheet="peek">
 <div id="map"></div>
 
-<aside class="panel" aria-label="Pianificazione tragitto">
-  <div class="banner" id="banner" hidden>Anteprima con meteo di esempio. Per mappa vera e previsioni live apri index.html nel browser; se l'hai già fatto, il server delle mappe non è raggiungibile: controlla la connessione.</div>
-  <div class="brand">
-    <h1>State of the Route<span class="beta">beta</span></h1>
-    <div class="iconbtns">
-      <button class="ib" id="b3d" aria-pressed="false" title="Vista inclinata">3D</button>
-      <button class="ib" id="bShelter" aria-pressed="false" title="Dove ripararti se piove">Soste</button>
-      <button class="ib" id="bRadar" aria-pressed="false" title="Radar pioggia">Radar</button>
-      <button class="ib" id="bHealth" aria-pressed="false" title="Stato dei servizi (mappa, indirizzi, percorso, meteo)">Servizi</button>
-      <button class="ib" id="bDark" aria-pressed="false" title="Mappa scura" hidden>Scura</button>
+<!-- Mobile: barra in alto con percorso compatto e orario rapido (nascosta su desktop, dove il form sta nel pannello) -->
+<header class="topbar" id="topbar">
+  <div class="tb-card">
+    <div class="tb-route" id="tbRoute"><span class="tb-a" id="tbA">Da dove parti?</span><span class="tb-b" id="tbB">→ Dove vai?</span></div>
+    <button type="button" class="tb-ib" id="tbSwap" aria-label="Inverti partenza e arrivo" title="Inverti partenza e arrivo"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg></button>
+    <button type="button" class="tb-ib tb-edit" id="tbEdit" aria-label="Modifica percorso" title="Modifica percorso"><svg class="i" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+  </div>
+  <div class="when-chips" role="group" aria-label="Quando parti">
+    <button type="button" class="wchip" data-when="now" aria-pressed="false">Parti ora</button>
+    <button type="button" class="wchip" data-when="hour" aria-pressed="false">Tra 1 ora</button>
+    <button type="button" class="wchip" data-when="pick" aria-pressed="false">Scegli ora</button>
+  </div>
+</header>
+
+<!-- Pulsanti sulla mappa -->
+<div class="mapctl" role="group" aria-label="Controlli mappa">
+  <button type="button" class="mc" id="bBike" aria-pressed="true" aria-label="Mostra o nascondi ciclabili" title="Ciclabili"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-8h5l3 8M10 8l3 8M9 5h3"/></svg></button>
+  <button type="button" class="mc" id="bDark" aria-pressed="false" aria-label="Tema scuro" title="Tema scuro" hidden><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <button type="button" class="mc" id="b3d" aria-pressed="false" aria-label="Vista inclinata 3D" title="Vista inclinata">3D</button>
+  <button type="button" class="mc" id="bRadar" aria-pressed="false" aria-label="Radar pioggia" title="Radar pioggia">Radar</button>
+  <button type="button" class="mc" id="bHealth" aria-pressed="false" aria-label="Stato servizi" title="Stato dei servizi (mappa, indirizzi, percorso, meteo)"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></button>
+</div>
+<div class="mapstat status" id="mapStatus" role="status"></div>
+<div class="toast" id="toast" aria-hidden="true" hidden></div>
+
+<aside class="panel" id="panel" aria-label="Pianificazione tragitto">
+  <div class="sheet-head" id="sheetHead">
+    <button type="button" class="grab" id="grab" aria-expanded="false" aria-label="Pannello compatto: tocca per ingrandire"><span></span></button>
+    <section class="verdict" id="verdict" data-level="none">
+      <span class="vico" aria-hidden="true">
+        <svg class="i vi-ok" width="28" height="28" viewBox="0 0 24 24" stroke-width="2.4"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+        <svg class="i vi-drop" width="28" height="28" viewBox="0 0 24 24" stroke-width="2.2"><path d="M12 3c3.5 4.5 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 2.5-6.5 6-11z"/></svg>
+        <svg class="i vi-umb" width="28" height="28" viewBox="0 0 24 24" stroke-width="2.2"><path d="M3 12a9 9 0 0 1 18 0z"/><path d="M12 12v6.5a2 2 0 0 1-4 0"/></svg>
+        <svg class="i vi-none" width="28" height="28" viewBox="0 0 24 24" stroke-width="3"><path d="M6 12h.01M12 12h.01M18 12h.01"/></svg>
+      </span>
+      <div class="vtxt"><h2 id="vTitle">Imposta il tragitto</h2><p id="vText">Cerca due indirizzi oppure clicca due punti sulla mappa.</p></div>
+      <div class="vside"><b id="pkTime"></b><span id="pkDist"></span></div>
+    </section>
+    <div class="minibars" id="miniBars" aria-hidden="true"></div>
+  </div>
+
+  <div class="sheet-body" id="sheetBody">
+    <div class="brand"><h1>State of the Route</h1><span class="beta">beta</span></div>
+    <div class="banner" id="banner" hidden>Anteprima con meteo di esempio. Per mappa vera e previsioni live apri index.html nel browser; se l'hai già fatto, il server delle mappe non è raggiungibile: controlla la connessione.</div>
+
+    <section id="winBox" hidden>
+      <span class="lbl">Quando partire</span>
+      <div class="bars" id="bars"></div>
+      <p class="cap">L'altezza delle barre è la pioggia che prendi partendo a quell'ora.</p>
+      <div class="ticks" id="ticks"></div>
+    </section>
+
+    <div class="qrow">
+      <button type="button" class="chip" id="bShelter" aria-pressed="false" title="Dove ripararti se piove">Soste</button>
     </div>
-  </div>
 
-  <div class="field">
-    <div class="pt"><span class="dot a">A</span><input id="inA" placeholder="Da dove parti? (qualsiasi luogo)" autocomplete="off"><div class="sugg" id="sgA" hidden></div></div>
-    <div class="pt"><span class="dot b">B</span><input id="inB" placeholder="Dove vai?" autocomplete="off"><div class="sugg" id="sgB" hidden></div></div>
-    <div class="row">
-      <button class="btn" id="swap">⇅ Inverti A↔B</button>
-      <button class="btn" id="save">Salva</button>
-      <button class="btn" id="load">Carica</button>
+    <div class="whenrow">
+      <div class="seg" role="group" aria-label="Modalità orario">
+        <button type="button" id="mDep" aria-pressed="true">Parto alle</button>
+        <button type="button" id="mArr" aria-pressed="false">Arrivo entro</button>
+      </div>
+      <input id="when" type="datetime-local" aria-label="Data e ora">
     </div>
-    <div class="chips" id="chips" hidden></div>
-    <div class="hint" id="hintTxt" hidden>Clic = arrivo · tasto destro = partenza · trascina i pin</div>
-  </div>
 
-  <div class="row">
-    <div class="seg" role="group" aria-label="Modalità orario">
-      <button id="mDep" aria-pressed="true">Parto alle</button>
-      <button id="mArr" aria-pressed="false">Arrivo entro</button>
+    <div class="stats" id="stats" hidden>
+      <div class="stat"><b id="sDist">–</b><span>distanza</span></div>
+      <div class="stat"><b id="sTime">–</b><span>durata</span></div>
+      <div class="stat"><b id="sWet">–</b><span>bagnato</span></div>
+      <div class="stat"><b id="sWind">–</b><span>vento</span></div>
     </div>
-    <input id="when" type="datetime-local" style="flex:1">
-  </div>
-  <div class="row">
-    <span class="lbl" style="min-width:90px">Velocità</span>
-    <input id="spd" type="range" min="10" max="32" value="18" style="flex:1">
-    <span class="mono" id="spdV">18 km/h</span>
-  </div>
-  <div class="hint" id="tzNote"></div>
-  <div class="status" id="status" role="status"></div>
-  <div class="status" id="mapStatus" role="status"></div>
 
-  <section class="verdict" id="verdict" data-level="none">
-    <h2 id="vTitle">Imposta il tragitto</h2>
-    <p id="vText">Cerca due indirizzi oppure clicca due punti sulla mappa.</p>
-  </section>
-  <div class="stats" id="stats" hidden>
-    <div class="stat"><b id="sDist">–</b><span>distanza</span></div>
-    <div class="stat"><b id="sTime">–</b><span>durata</span></div>
-    <div class="stat"><b id="sWet">–</b><span>bagnato</span></div>
-    <div class="stat"><b id="sWind">–</b><span>vento</span></div>
+    <section id="shelterBox" class="sh-box" hidden aria-labelledby="shTitle">
+      <div class="sh-head">
+        <h3 class="sh-title" id="shTitle">Dove ripararsi</h3>
+        <span class="sh-note" id="shNote"></span>
+      </div>
+      <div class="sh-filters" role="group" aria-label="Filtra le soste">
+        <button type="button" class="sh-chip" data-sh-filter="all" aria-pressed="true">Tutte</button>
+        <button type="button" class="sh-chip" data-sh-filter="cover" aria-pressed="false">Al coperto</button>
+        <button type="button" class="sh-chip" data-sh-filter="food" aria-pressed="false">Locali</button>
+      </div>
+      <div class="sh-list" id="shList" aria-live="polite"></div>
+      <p class="sh-credit">Soste da dati © OpenStreetMap (<a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>). Gli orari di apertura sono inseriti dai volontari e possono essere non aggiornati.</p>
+    </section>
+
+    <div class="s-form" id="form">
+      <div class="when-chips when-panel" role="group" aria-label="Quando parti">
+        <button type="button" class="btn dark" data-when="now" aria-pressed="false">Parti ora</button>
+        <button type="button" class="btn" data-when="hour" aria-pressed="false">Tra 1 ora</button>
+        <button type="button" class="btn" data-when="pick" aria-pressed="false">Scegli ora</button>
+      </div>
+      <div class="pt"><span class="dot a" aria-hidden="true">A</span><input id="inA" aria-label="Partenza" placeholder="Da dove parti? (qualsiasi luogo)" autocomplete="off"><div class="sugg" id="sgA" hidden></div></div>
+      <div class="pt"><span class="dot b" aria-hidden="true">B</span><input id="inB" aria-label="Arrivo" placeholder="Dove vai?" autocomplete="off"><div class="sugg" id="sgB" hidden></div></div>
+      <div class="row">
+        <button type="button" class="btn" id="swap">⇅ Inverti A↔B</button>
+        <button type="button" class="btn" id="save">Salva</button>
+        <button type="button" class="btn" id="load">Carica</button>
+      </div>
+      <details class="opts ex"><summary>Esempi di tragitti</summary><div class="chips" id="chips" hidden></div></details>
+      <div class="hint" id="hintTxt" hidden>Clic = arrivo · tasto destro = partenza · trascina i pin</div>
+    </div>
+
+    <details class="opts">
+      <summary>Opzioni</summary>
+      <div class="row">
+        <span class="lbl" style="min-width:80px">Velocità</span>
+        <input id="spd" type="range" min="10" max="32" value="18" style="flex:1" aria-label="Velocità in km/h">
+        <span class="mono" id="spdV">18 km/h</span>
+      </div>
+      <div class="hint" id="tzNote"></div>
+    </details>
+    <div class="status" id="status" role="status"></div>
+
+    <details class="dir" id="dirBox" hidden>
+      <summary id="dirSum">Indicazioni</summary>
+      <ol id="dirList"></ol>
+    </details>
+
+    <div class="legend">
+      <span style="--c:var(--dry-map)">asciutto</span><span style="--c:var(--light-map)">&lt;1 mm/h</span>
+      <span style="--c:var(--mod-map)">1–4 mm/h</span><span style="--c:var(--heavy-map)">&gt;4 mm/h</span>
+    </div>
+    <details class="src"><summary>Fonti e crediti</summary><div class="sources">
+      Tutto open: mappa <a href="https://maplibre.org" target="_blank" rel="noopener">MapLibre</a> + <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> (© OpenStreetMap) ·
+      percorso bici <a href="https://routing.openstreetmap.de" target="_blank" rel="noopener">OSRM/FOSSGIS</a> ·
+      indirizzi <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> ·
+      meteo <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (nowcast 15′ + ECMWF, GFS, ICON, Météo-France, ItaliaMeteo ICON-2I) ·
+      radar <a href="https://www.rainviewer.com/api.html" target="_blank" rel="noopener">RainViewer</a>.
+    </div></details>
   </div>
-
-<section id="shelterBox" class="sh-box" hidden aria-labelledby="shTitle">
-  <div class="sh-head">
-    <h3 class="sh-title" id="shTitle">Dove ripararti</h3>
-    <span class="sh-note" id="shNote"></span>
-  </div>
-  <div class="sh-filters" role="group" aria-label="Filtra le soste">
-    <button type="button" class="sh-chip" data-sh-filter="all" aria-pressed="true">Tutte</button>
-    <button type="button" class="sh-chip" data-sh-filter="cover" aria-pressed="false">Al coperto</button>
-    <button type="button" class="sh-chip" data-sh-filter="food" aria-pressed="false">Locali</button>
-  </div>
-  <div class="sh-list" id="shList" aria-live="polite"></div>
-  <p class="sh-credit">Soste da dati © OpenStreetMap (<a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>). Gli orari di apertura sono inseriti dai volontari e possono essere non aggiornati.</p>
-</section>
-
-  <section id="healthBox" class="hl-box" hidden aria-labelledby="hlTitle">
-  <div class="sh-head"><h3 class="sh-title" id="hlTitle">Stato servizi</h3><span class="sh-note" id="hlNote"></span></div>
-  <ul class="hl-list" id="hlList" aria-live="polite"></ul>
-  <div class="row"><button type="button" class="btn" id="hlRun">Ricontrolla</button><button type="button" class="btn" id="hlCopy">Copia diagnostica</button></div>
-</section>
-
-  <section id="winBox" hidden>
-    <span class="lbl">Se parti alle… quanto ti bagni</span>
-    <div class="bars" id="bars"></div>
-    <div class="ticks" id="ticks"></div>
-  </section>
-
-  <details class="dir" id="dirBox" hidden>
-    <summary id="dirSum">Indicazioni</summary>
-    <ol id="dirList"></ol>
-  </details>
-
-  <div class="legend">
-    <span style="--c:var(--dry-map)">asciutto</span><span style="--c:var(--light-map)">&lt;1 mm/h</span>
-    <span style="--c:var(--mod-map)">1–4 mm/h</span><span style="--c:var(--heavy-map)">&gt;4 mm/h</span>
-  </div>
-  <details class="src"><summary>Fonti e crediti</summary><div class="sources">
-    Tutto open: mappa <a href="https://maplibre.org" target="_blank" rel="noopener">MapLibre</a> + <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> (© OpenStreetMap) ·
-    percorso bici <a href="https://routing.openstreetmap.de" target="_blank" rel="noopener">OSRM/FOSSGIS</a> ·
-    indirizzi <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> ·
-    meteo <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (nowcast 15′ + ECMWF, GFS, ICON, Météo-France, ItaliaMeteo ICON-2I) ·
-    radar <a href="https://www.rainviewer.com/api.html" target="_blank" rel="noopener">RainViewer</a>.
-  </div></details>
 </aside>
 
+<!-- Stato servizi: schermata a tutto schermo su mobile, pannello a sinistra su desktop -->
+<section id="healthBox" class="hl-box" hidden aria-labelledby="hlTitle">
+  <div class="hl-top">
+    <button type="button" class="hl-back" id="hlBack" aria-label="Indietro"><svg class="i" width="20" height="20" viewBox="0 0 24 24" stroke-width="2.2" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <h3 id="hlTitle">Stato servizi</h3>
+    <button type="button" class="btn pri" id="hlRun">Ricontrolla</button>
+  </div>
+  <div class="hl-scroll">
+    <div class="hl-banner" id="hlNote" role="status"></div>
+    <ul class="hl-list" id="hlList" aria-live="polite"></ul>
+  </div>
+  <div class="hl-foot"><button type="button" class="btn dark" id="hlCopy">Copia diagnostica</button></div>
+</section>
+
 <div class="trip" id="trip" hidden>
-  <button class="play" id="play" aria-label="Riproduci il viaggio">▶</button>
+  <button type="button" class="play" id="play" aria-label="Riproduci il viaggio">▶</button>
   <div class="info">
     <div class="now"><span id="tNow">07:45 · km 0.0</span><em id="tWx">asciutto</em></div>
     <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Posizione nel viaggio">
@@ -322,9 +463,10 @@ const rad=x=>x*Math.PI/180, deg=x=>x*180/Math.PI;
 const st={provider:'',routeFail:'',tz:null,off:null,straight:false,a:null,b:null,mode:'dep',speed:18,route:null,steps:[],samples:null,wx:null,dep:null,res:null,key:null};
 
 /* ---------- Mappa (MapLibre + OpenFreeMap) ---------- */
-const isDark=matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme!=='light';   /* solo per l'anteprima a quadretti */
 /* Mappa: default sempre chiara (liberty), indipendente dal tema del sistema; "Scura" = fiord, scelta ricordata. */
 let darkMap=LS.get('sotr.dark')===true;
+let isDark=FORCE_DEMO?matchMedia('(prefers-color-scheme: dark)').matches:darkMap;   /* tema UI e anteprima a quadretti */
+document.documentElement.dataset.theme=isDark?'dark':'light';
 const ONLINE=!FORCE_DEMO;
 const theme=()=>darkMap?'dark':'light';
 /* Anteprima offline (es. artifact su claude.ai): percorso reale Figline → Montevarchi e meteo di esempio */
@@ -340,7 +482,7 @@ let mapMode=ONLINE?'vector':'demo';
 const styleFor=m=>m==='vector'?sotrBuildStyle({theme:theme()}):m==='raster'?sotrRasterStyle({theme:theme()}):demoStyle();
 const map=new maplibregl.Map({container:'map',style:styleFor(mapMode),
   center:[11.52,43.57],zoom:11.2,attributionControl:false});
-map.addControl(new maplibregl.AttributionControl({compact:true}),innerWidth>720?'bottom-right':'top-left');
+map.addControl(new maplibregl.AttributionControl({compact:true}),innerWidth>720?'bottom-right':'bottom-left');
 map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),'top-right');
 map.addControl(new maplibregl.ScaleControl({unit:'metric'}),'bottom-right');
 window.__sotrMap=map;   /* per i test e2e */
@@ -576,7 +718,7 @@ async function run(){
       if(wx.tz){ try{ new Intl.DateTimeFormat('it-IT',{timeZone:wx.tz}); st.tz=wx.tz; st.off=wx.off; }catch{} }
       $('tzNote').textContent=st.tz?`Gli orari sono nel fuso di partenza: ${st.tz}.`:'';
       await ready; const bb=route.reduce((b,c)=>b.extend(c),new maplibregl.LngLatBounds(route[0],route[0]));
-      map.fitBounds(bb,{padding:{top:60,bottom:innerWidth>720?120:Math.round(innerHeight*0.52)+150,left:innerWidth>720?420:40,right:60},duration:900,maxZoom:15});
+      map.fitBounds(bb,{padding:innerWidth>720?{top:60,bottom:120,left:420,right:60}:{top:185,bottom:Math.min(Math.round(innerHeight*.5),$('panel').offsetHeight)+130,left:40,right:40},duration:900,maxZoom:15});
     }
     render(baseDep(),true);
     if(st.straight) status(st.routeFail||'Nessun percorso in bici tra questi punti: uso la linea d\'aria.',!!st.routeFail);
@@ -928,20 +1070,22 @@ async function hlProbe([name,kind,url,how]){ const t0=performance.now(), ms=()=>
         if(how==='json') await r.json(); else if(how==='bin') await r.arrayBuffer(); else await r.text(); } finally{ clearTimeout(t); } }
     return {name,kind,ok:true,ms:ms()};
   }catch(e){ return {name,kind,ok:false,ms:ms(),error:hlShort(e)}; } }
-function hlRender(){ const ul=$('hlList'); ul.replaceChildren();
-  hlRows.forEach(r=>{ const li=document.createElement('li'); li.className='hl-row'; li.dataset.ok=String(r.ok);
-    const d=document.createElement('span'); d.className='hl-dot'; d.setAttribute('aria-hidden','true');
-    const n=document.createElement('span'); n.className='hl-name'; n.textContent=r.name;
-    const x=document.createElement('span'); x.className='hl-res'; x.textContent=(r.ok?'OK':'KO')+' · '+r.ms+' ms';
-    li.append(d,n,x); if(r.error){ const e=document.createElement('span'); e.className='hl-err'; e.textContent=r.error; li.appendChild(e); }
-    ul.appendChild(li); }); }
+function hlRender(){ const ul=$('hlList'); ul.replaceChildren(); let last='';
+  const grp=n=>/^Mappa/.test(n)?'Mappa':/^(Indirizzi|Percorso)/.test(n)?'Percorso e indirizzi':'Meteo e soste';
+  hlRows.forEach(r=>{ const g=grp(r.name); if(g!==last){ last=g; const h=document.createElement('li'); h.className='hl-grp'; h.textContent=g; ul.appendChild(h); }
+    const li=document.createElement('li'); li.className='hl-row'; li.dataset.ok=String(r.ok);
+    const p=document.createElement('span'); p.className='hl-pill'; p.textContent=r.ok?'OK':'KO';
+    const m=document.createElement('span'); m.className='hl-main'; const n=document.createElement('span'); n.className='hl-name'; n.textContent=r.name; m.appendChild(n);
+    if(r.error){ const e=document.createElement('span'); e.className='hl-err'; e.textContent=r.error; m.appendChild(e); }
+    const x=document.createElement('span'); x.className='hl-ms'; x.textContent=r.ms+' ms';
+    li.append(p,m,x); ul.appendChild(li); }); }
 async function hlRun(){ if(hlBusy) return; hlBusy=true; const note=$('hlNote'); note.textContent='controllo…'; $('hlRun').disabled=true;
   try{
     if(!ONLINE){ hlRows=[]; hlRender(); note.textContent='non disponibile in anteprima'; return; }
     const prov=providers.health().then(a=>Array.isArray(a)?a:[]).catch(()=>[]);
     const [pv,...pr]=await Promise.all([prov,...HL_PROBES.map(hlProbe)]);
     hlRows=[...pv.map(r=>({...r,name:({'photon':'Indirizzi: Photon','nominatim':'Indirizzi: Nominatim','osrm-fossgis':'Percorso: OSRM FOSSGIS','valhalla':'Percorso: Valhalla','osrm-demo':'Percorso: OSRM demo'})[r.name]||r.name})),...pr];
-    hlRender(); const bad=hlRows.filter(r=>!r.ok).length; note.textContent=bad?bad+' su '+hlRows.length+' non raggiungibili':'tutto raggiungibile';
+    hlRender(); const bad=hlRows.filter(r=>!r.ok).length; note.textContent=bad?bad+' su '+hlRows.length+' non raggiungibili':'tutto raggiungibile'; note.dataset.bad=bad?'1':'0';
   }catch(e){ note.textContent='errore nel controllo'; } finally{ hlBusy=false; $('hlRun').disabled=false; } }
 function hlSetOpen(on){ $('healthBox').hidden=!on; $('bHealth').setAttribute('aria-pressed',on?'true':'false'); if(on){ hlRun(); $('healthBox').scrollIntoView?.({block:'nearest'}); } }
 $('bHealth').onclick=()=>hlSetOpen($('healthBox').hidden);
@@ -956,6 +1100,86 @@ const PRESETS=[['Firenze → Roma',43.7696,11.2558,41.8933,12.4829],['Londra →
 if(ONLINE){ $('chips').hidden=false; $('hintTxt').hidden=false;
   PRESETS.forEach(([n,la,lo,lb,lob])=>{ const b=document.createElement('button'); b.className='chip'; b.textContent=n;
     b.onclick=()=>{ const [x,y]=n.split(' → '); st.a=null; st.b=null; setPoint('a',{lat:la,lng:lo},x); setPoint('b',{lat:lb,lng:lob},y); }; $('chips').appendChild(b); }); }
+
+/* ---------- Shell UX: bottom sheet, barra in alto, ciclabili, tema, mini-barre ---------- */
+/* Collega solo gli elementi nuovi (id nuovi: panel, grab, sheetHead, miniBars, tb*, bBike, toast, hlBack); nessuna logica dati. */
+const mq=matchMedia('(max-width:720px)');
+const panel=$('panel'), SHEETS=['peek','mid','full'];
+const SHEET_TXT={peek:'compatto: tocca per ingrandire',mid:'a metà: tocca per ingrandire',full:'aperto: tocca per ridurre'};
+let sheet='peek', refitTimer=0;
+const safeB=(()=>{ const d=document.createElement('div'); d.style.cssText='position:fixed;bottom:0;left:0;height:env(safe-area-inset-bottom,0px);visibility:hidden'; document.body.appendChild(d); const h=d.offsetHeight; d.remove(); return h; })();
+const sheetH=()=>({peek:140+safeB,mid:Math.round(innerHeight*.5),full:Math.round(innerHeight*.88)});
+function refitRoute(){ if(!mq.matches||!st.route||sheet==='full') return;
+  const bb=st.route.reduce((b,c)=>b.extend(c),new maplibregl.LngLatBounds(st.route[0],st.route[0]));
+  map.fitBounds(bb,{padding:{top:185,bottom:sheetH()[sheet]+(sheet==='peek'?130:70),left:40,right:40},duration:500,maxZoom:15}); }
+function setSheet(s,opt){ sheet=s; document.body.dataset.sheet=s; panel.style.height=''; panel.style.transition='';
+  const g=$('grab'); g.setAttribute('aria-expanded',s==='peek'?'false':'true'); g.setAttribute('aria-label','Pannello '+SHEET_TXT[s]);
+  if(!(opt&&opt.noFit)){ clearTimeout(refitTimer); refitTimer=setTimeout(refitRoute,320); } }
+const cycleSheet=()=>setSheet(SHEETS[(SHEETS.indexOf(sheet)+1)%3]);
+{ const head=$('sheetHead'); let drag=null;
+  head.addEventListener('pointerdown',e=>{ if(!mq.matches||(e.pointerType==='mouse'&&e.button!==0)) return;
+    drag={id:e.pointerId,y:e.clientY,h:panel.offsetHeight,moved:false,ly:e.clientY,lt:performance.now(),v:0}; try{ head.setPointerCapture(e.pointerId); }catch{} });
+  head.addEventListener('pointermove',e=>{ if(!drag||e.pointerId!==drag.id) return; const dy=e.clientY-drag.y;
+    if(!drag.moved&&Math.abs(dy)>8){ drag.moved=true; panel.style.transition='none'; }
+    if(!drag.moved) return; const hs=sheetH(); panel.style.height=Math.max(hs.peek,Math.min(hs.full,drag.h-dy))+'px';
+    const t=performance.now(); drag.v=(e.clientY-drag.ly)/Math.max(1,t-drag.lt); drag.ly=e.clientY; drag.lt=t; });
+  const end=e=>{ if(!drag||e.pointerId!==drag.id) return; const d=drag; drag=null;
+    if(!d.moved){ panel.style.transition=''; if(e.type==='pointerup') cycleSheet(); return; }
+    const hs=sheetH(), h=panel.offsetHeight-d.v*140; let best='peek';
+    for(const k of SHEETS) if(Math.abs(hs[k]-h)<Math.abs(hs[best]-h)) best=k;
+    setSheet(best); };
+  head.addEventListener('pointerup',end); head.addEventListener('pointercancel',end);
+  $('grab').addEventListener('click',e=>{ if(e.detail===0) cycleSheet(); });   /* tastiera (Invio/Spazio); il tocco è gestito da pointerup */
+  mq.addEventListener?.('change',()=>{ panel.style.height=''; panel.style.transition=''; }); }
+panel.addEventListener('click',e=>{ if(mq.matches&&e.target.closest('.dir li button,.sh-main')) setSheet('mid',{noFit:true}); });   /* indicazioni e soste: libera la mappa */
+
+/* Barra in alto: percorso compatto, inverti, modifica */
+function syncTop(){ $('tbA').textContent=$('inA').value||'Da dove parti?'; $('tbB').textContent='→ '+($('inB').value||'Dove vai?'); }
+for(const el of [$('inA'),$('inB')]){ const d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
+  Object.defineProperty(el,'value',{configurable:true,get(){ return d.get.call(this); },set(v){ d.set.call(this,v); syncTop(); }}); el.addEventListener('input',syncTop); }
+$('tbSwap').onclick=()=>$('swap').click();
+$('tbEdit').onclick=()=>{ setSheet('full',{noFit:true}); $('inA').focus(); $('inA').select?.(); };
+
+/* Orario rapido: Parti ora / Tra 1 ora / Scegli ora (pilloli in alto su mobile, nel pannello su desktop) */
+function localStamp(ms){ const o={year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}; if(ONLINE&&st.tz) o.timeZone=st.tz;
+  let p; try{ p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',o).formatToParts(ms).map(x=>[x.type,x.value])); }catch{ delete o.timeZone; p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',o).formatToParts(ms).map(x=>[x.type,x.value])); }
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`; }
+const markWhen=k=>document.querySelectorAll('[data-when]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.when===k?'true':'false'));
+document.querySelectorAll('[data-when]').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.when;
+  if(k==='pick'){ if(mq.matches&&sheet==='peek') setSheet('mid',{noFit:true}); const w=$('when'); w.focus(); try{ w.showPicker?.(); }catch{} markWhen('pick'); return; }
+  $('when').value=localStamp(Date.now()+(k==='hour'?3600e3:0)); markWhen(k);
+  if(st.mode!=='dep') setMode('dep'); else if(st.wx) render(baseDep(),true); }));
+$('when').addEventListener('change',()=>markWhen('pick')); markWhen('pick');
+
+/* Ciclabili: commuta i layer di map-style.js; lo stato sopravvive ai cambi di stile (tema, riserva raster) e al ricaricamento */
+let bikeOn=LS.get('sotr.bike')!==false;
+function applyBike(){ const ids=[SOTR_LAYERS.bikeLane,SOTR_LAYERS.bikeLaneCasing,'sotr-bike-soft']; let any=false;
+  for(const id of ids) if(map.getLayer(id)){ any=true; map.setLayoutProperty(id,'visibility',bikeOn?'visible':'none'); }
+  const b=$('bBike'); b.setAttribute('aria-pressed',String(bikeOn)); b.disabled=!any; b.title=any?'Ciclabili':'Ciclabili non disponibili con questa mappa'; }
+$('bBike').onclick=()=>{ bikeOn=!bikeOn; LS.set('sotr.bike',bikeOn); applyBike(); };
+map.on('style.load',applyBike); ready.then(applyBike);
+
+/* Tema: la UI segue il toggle "Tema scuro" (che resta quello della mappa) */
+$('bDark').addEventListener('click',()=>{ isDark=darkMap; document.documentElement.dataset.theme=darkMap?'dark':'light'; });
+
+/* Mini-barre nel peek, durata/distanza accanto al verdetto, conteggio soste, toast errori */
+function syncMini(){ const m=$('miniBars'); m.replaceChildren();
+  [...$('bars').children].forEach(b=>{ const i=b.querySelector('i'), d=document.createElement('span');
+    d.style.height=Math.max(4,Math.round((parseFloat(i&&i.style.height)||5)*30/64))+'px'; d.style.background=(i&&i.style.background)||'var(--none)';
+    if(b.getAttribute('aria-pressed')==='true') d.className='sel'; m.appendChild(d); }); }
+new MutationObserver(syncMini).observe($('bars'),{childList:true});
+const syncPk=()=>{ const v=id=>{ const t=$(id).textContent.trim(); return t==='–'?'':t; }; $('pkTime').textContent=v('sTime'); $('pkDist').textContent=v('sDist'); };
+for(const id of ['sTime','sDist']) new MutationObserver(syncPk).observe($(id),{childList:true,characterData:true,subtree:true});
+new MutationObserver(()=>{ const m=/^\d+/.exec($('shNote').textContent.trim()); $('bShelter').textContent=m?'Soste · '+m[0]:'Soste'; }).observe($('shNote'),{childList:true,characterData:true,subtree:true});
+{ const toast=$('toast'); let tt=0;
+  new MutationObserver(()=>{ const s=$('status'); if(!s.classList.contains('err')||!s.textContent) return; toast.textContent=s.textContent; toast.hidden=false; clearTimeout(tt); tt=setTimeout(()=>{ toast.hidden=true; },7000); })
+    .observe($('status'),{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['class']}); }
+
+/* Stato servizi: schermata con "Indietro" e Esc; il focus torna sul pulsante */
+$('hlBack').onclick=()=>{ hlSetOpen(false); $('bHealth').focus(); };
+$('bHealth').addEventListener('click',()=>{ if(!$('healthBox').hidden) $('hlBack').focus(); });
+addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('healthBox').hidden){ hlSetOpen(false); $('bHealth').focus(); } });
+syncTop();
 
 /* ---------- Avvio ---------- */
 $('banner').hidden=ONLINE;

@@ -3,7 +3,7 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { resolve, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PW_MODULE || '/opt/npm-tools/node_modules/playwright');
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '../..');
@@ -71,6 +71,7 @@ async function installMocks(ctx, cfg, hits) {
 const results = []; let failed = 0;
 const pass = (n) => { results.push(n); console.log('PASS ' + n); };
 const fail = (n, why) => { failed++; console.log('FAIL ' + n + ' -> ' + why); };
+const SHOTS = '/tmp/claude-0/shots';   /* screenshot per la revisione visiva, fuori dal repo */
 const VPS = { desktop: { viewport: { width: 1280, height: 800 } }, mobile: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true } };
 
 async function scenario(label, vp, cfg, fn, opts = {}) {
@@ -91,7 +92,7 @@ async function scenario(label, vp, cfg, fn, opts = {}) {
 }
 const text = (p, sel) => p.locator(sel).first().innerText();
 const waitText = (p, sel, re, ms = 15000) => p.waitForFunction(([s, r]) => new RegExp(r).test(document.querySelector(s)?.textContent || ''), [sel, re.source], { timeout: ms }).catch(async () => { throw new Error(`${sel} non contiene ${re}: "${(await p.locator(sel).first().textContent()).slice(0, 160)}"`); });
-const routeOk = async (p) => { await p.waitForSelector('#stats:not([hidden])', { timeout: 20000 }); const d = await text(p, '#sDist'); if (!/\d/.test(d)) throw new Error('distanza assente'); const v = await text(p, '#vTitle'); if (/Imposta il tragitto/.test(v)) throw new Error('verdetto assente');
+const routeOk = async (p) => { await p.waitForSelector('#stats:not([hidden])', { state: 'attached', timeout: 20000 }); const d = await p.locator('#sDist').first().textContent();   /* su mobile le statistiche stanno nello sheet esteso: non visibili al peek */ if (!/\d/.test(d)) throw new Error('distanza assente'); const v = await text(p, '#vTitle'); if (/Imposta il tragitto/.test(v)) throw new Error('verdetto assente');
   const ov = await p.evaluate(() => { const m = window.__sotrMap; const ids = m.getStyle().layers.map((l) => l.id); const i = ids.indexOf('route-line'), f = ids.indexOf('sotr-first-label'); return { has: i >= 0, below: f < 0 || i < f, data: !!m.getSource('route') }; });
   if (!ov.has || !ov.below || !ov.data) throw new Error('overlay percorso assente o sopra le etichette: ' + JSON.stringify(ov)); };
 
@@ -110,6 +111,7 @@ try {
       if (!(await p.evaluate(() => !!document.querySelector('#map canvas')))) throw new Error('canvas assente');
     }, { fallbackMs: 1500 });
     await scenario('d) Photon 400 -> Nominatim: suggerimenti', vp, { photon: 400 }, async (p) => {
+      if (vp === 'mobile') await p.click('#tbEdit');   /* mobile: il form sta nello sheet; il pulsante Modifica lo apre */
       await p.fill('#inA', 'Figline'); await p.waitForSelector('#sgA button', { timeout: 15000 }); await waitText(p, '#status', /Nominatim/);
     });
     await scenario('e) OSRM 503 -> Valhalla', vp, { osrm: 503 }, async (p, h) => {
@@ -129,6 +131,68 @@ try {
       await waitText(p, '#mapStatus', /vettoriale OpenFreeMap/); await routeOk(p); await p.click('#bDark');
       await waitText(p, '#mapStatus', /vettoriale OpenFreeMap/); await p.waitForFunction(() => !!document.querySelector('#bDark[aria-pressed="true"]'));
       const ok = await p.evaluate(() => { const m = window.__sotrMap; return m ? !!m.getLayer('route-line') : true; }); if (!ok) throw new Error('overlay persi dopo cambio tema');
+    });
+
+    await scenario('i) sheet mobile: peek -> metà -> pieno (tap, tastiera, trascinamento)', vp, {}, async (p) => {
+      await routeOk(p);
+      if (vp !== 'mobile') {   /* desktop: pannello laterale 400px, niente sheet */
+        const r = await p.evaluate(() => { const b = document.getElementById('panel').getBoundingClientRect(); return { l: b.left, w: b.width, h: b.height, vh: innerHeight, grab: getComputedStyle(document.getElementById('grab')).display }; });
+        if (Math.abs(r.w - 400) > 1 || r.l !== 0 || Math.abs(r.h - r.vh) > 1 || r.grab !== 'none') throw new Error('pannello desktop non 400px a sinistra: ' + JSON.stringify(r));
+        return; }
+      const H = () => p.evaluate(() => ({ s: document.body.dataset.sheet, h: Math.round(document.getElementById('panel').getBoundingClientRect().height), vh: innerHeight }));
+      const settle = async (want) => { await p.waitForFunction((w) => document.body.dataset.sheet === w, want); await p.waitForTimeout(450); return H(); };
+      const near = (a, b) => Math.abs(a - b) <= 4;
+      let r = await H(); if (r.s !== 'peek' || !near(r.h, 140)) throw new Error('peek atteso 140px: ' + JSON.stringify(r));
+      const vis = await p.evaluate(() => { const t = document.getElementById('vTitle').getBoundingClientRect(), pn = document.getElementById('panel').getBoundingClientRect(); const mb = document.querySelectorAll('#miniBars span').length; return { top: t.top >= pn.top, bottom: t.bottom <= pn.bottom, mini: mb }; });
+      if (!vis.top || !vis.bottom || vis.mini < 3) throw new Error('verdetto/mini-barre non visibili nel peek: ' + JSON.stringify(vis));
+      await p.click('#grab'); r = await settle('mid'); if (!near(r.h, r.vh * 0.5)) throw new Error('metà atteso 50vh: ' + JSON.stringify(r));
+      if (!(await p.locator('#bars .bar').first().isVisible())) throw new Error('barre orarie non visibili a metà');
+      await p.click('#grab'); r = await settle('full'); if (!near(r.h, r.vh * 0.88)) throw new Error('pieno atteso 88vh: ' + JSON.stringify(r));
+      if (!(await p.locator('#inA').isVisible())) throw new Error('form non visibile a sheet pieno');
+      await p.click('#grab'); r = await settle('peek'); if (!near(r.h, 140)) throw new Error('ritorno al peek fallito: ' + JSON.stringify(r));
+      await p.focus('#grab'); await p.keyboard.press('Enter'); r = await settle('mid');   /* tastiera */
+      await p.keyboard.press('Enter'); await settle('full'); await p.keyboard.press('Enter'); await settle('peek');
+      const box = await p.locator('#grab').boundingBox(); const x = box.x + box.width / 2, y = box.y + box.height / 2;   /* trascinamento verso l'alto: snap a metà o pieno */
+      await p.mouse.move(x, y); await p.mouse.down(); await p.mouse.move(x, y - 120, { steps: 6 }); await p.mouse.move(x, y - 300, { steps: 6 }); await p.mouse.up();
+      await p.waitForTimeout(500); r = await H(); if (r.s === 'peek' || r.h < 300) throw new Error('trascinamento verso l\'alto senza effetto: ' + JSON.stringify(r));
+      const down = r.s; const b2 = await p.locator('#grab').boundingBox(); const x2 = b2.x + b2.width / 2, y2 = b2.y + b2.height / 2;   /* e verso il basso */
+      await p.mouse.move(x2, y2); await p.mouse.down(); await p.mouse.move(x2, y2 + 200, { steps: 6 }); await p.mouse.move(x2, y2 + 500, { steps: 6 }); await p.mouse.up();
+      await p.waitForTimeout(500); r = await H(); if (r.s !== 'peek' && !(down === 'full' && r.s === 'mid')) throw new Error('trascinamento verso il basso senza effetto: ' + JSON.stringify(r));
+    });
+    await scenario('j) bottone ciclabili: visibilità layer e persistenza al cambio tema', vp, {}, async (p) => {
+      await waitText(p, '#mapStatus', /vettoriale OpenFreeMap/); await routeOk(p);
+      const vis = () => p.evaluate(() => { const m = window.__sotrMap, ids = ['sotr-bike-lane', 'sotr-bike-lane-casing', 'sotr-bike-soft']; return ids.map((i) => (m.getLayer(i) ? (m.getLayoutProperty(i, 'visibility') || 'visible') : 'assente')); });
+      const want = async (v, why) => { const t0 = Date.now(); let got; while (Date.now() - t0 < 8000) { got = await vis(); if (got.every((x) => x === v)) return; await p.waitForTimeout(150); } throw new Error(why + ': atteso ' + v + ' ottenuto ' + JSON.stringify(got)); };
+      await want('visible', 'stato iniziale');
+      if ((await p.getAttribute('#bBike', 'aria-pressed')) !== 'true') throw new Error('aria-pressed iniziale');
+      await p.click('#bBike'); await want('none', 'dopo il click'); if ((await p.getAttribute('#bBike', 'aria-pressed')) !== 'false') throw new Error('aria-pressed dopo il click');
+      await p.click('#bDark'); await p.waitForFunction(() => document.documentElement.dataset.theme === 'dark'); await waitText(p, '#mapStatus', /vettoriale OpenFreeMap/);
+      await want('none', 'dopo il cambio tema (stato perso)');
+      await p.click('#bDark'); await p.waitForFunction(() => document.documentElement.dataset.theme === 'light'); await want('none', 'dopo il ritorno al tema chiaro');
+      await p.click('#bBike'); await want('visible', 'riattivazione');
+    });
+    await scenario('k) niente scroll orizzontale, target >=44px, nessun pageerror', vp, {}, async (p) => {
+      await routeOk(p);
+      const check = async (tag) => { const r = await p.evaluate(() => { const W = innerWidth, bad = [];
+          const over = (el) => { if (el.closest('.bars,.chips,.when-chips')) return; const b = el.getBoundingClientRect(); if (b.width && getComputedStyle(el).visibility !== 'hidden' && (b.right > W + 0.5 || b.left < -0.5)) bad.push((el.id || el.className || el.tagName) + ' x=' + Math.round(b.left) + '..' + Math.round(b.right)); };
+          document.querySelectorAll('#panel *, #topbar *, .mapctl *, #mapStatus, #trip, #trip *').forEach(over);
+          const sw = [document.documentElement, document.body, document.getElementById('panel'), document.getElementById('sheetBody')].map((e) => e.scrollWidth - e.clientWidth);
+          const small = [...document.querySelectorAll('.tb-ib,.wchip,.mc,.btn,.chip,.sh-chip,.seg button,.bar')].filter((b) => { const q = b.getBoundingClientRect(); return q.width && getComputedStyle(b).visibility !== 'hidden' && getComputedStyle(b).display !== 'none' && (q.height < 43.5 || (q.width < 43.5)); }).map((b) => (b.id || b.className) + ' ' + Math.round(b.getBoundingClientRect().width) + 'x' + Math.round(b.getBoundingClientRect().height));
+          return { bad, sw, small, W }; });
+        if (r.bad.length) throw new Error(tag + ': elementi fuori schermo ' + r.bad.slice(0, 4).join('; '));
+        if (r.sw.some((x) => x > 1)) throw new Error(tag + ': scroll orizzontale ' + JSON.stringify(r.sw));
+        if (r.small.length) throw new Error(tag + ': target < 44px: ' + r.small.slice(0, 4).join('; ')); };
+      await check('peek');
+      if (vp === 'mobile') { for (const st of ['mid', 'full']) { await p.click('#grab'); await p.waitForFunction((w) => document.body.dataset.sheet === w, st); await p.waitForTimeout(450); await check(st); }
+        const w = await p.evaluate(() => innerWidth); if (w !== 390) throw new Error('viewport mobile non 390: ' + w); }
+    });
+    await scenario('l) screenshot (mobile peek/metà/pieno/servizi/scuro, desktop)', vp, {}, async (p) => {
+      mkdirSync(SHOTS, { recursive: true }); await waitText(p, '#mapStatus', /vettoriale OpenFreeMap/); await routeOk(p); await p.waitForTimeout(1200);
+      await p.screenshot({ path: `${SHOTS}/${vp}-1-chiaro${vp === 'mobile' ? '-peek' : ''}.png` });
+      if (vp === 'mobile') { for (const st of ['mid', 'full']) { await p.click('#grab'); await p.waitForFunction((w) => document.body.dataset.sheet === w, st); await p.waitForTimeout(500); await p.screenshot({ path: `${SHOTS}/mobile-2-${st}.png` }); }
+        await p.click('#grab'); await p.waitForTimeout(500); }
+      await p.click('#bHealth'); await p.waitForSelector('#hlList .hl-row', { timeout: 20000 }); await waitText(p, '#hlNote', /tutto|non raggiungibil/); await p.screenshot({ path: `${SHOTS}/${vp}-3-servizi.png` }); await p.click('#hlBack');
+      await p.click('#bDark'); await p.waitForFunction(() => document.documentElement.dataset.theme === 'dark'); await p.waitForTimeout(800); await p.screenshot({ path: `${SHOTS}/${vp}-4-scuro.png` });
     });
   }
 } catch (e) { failed++; console.log('FAIL harness -> ' + e.message); }
