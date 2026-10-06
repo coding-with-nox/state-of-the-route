@@ -1,0 +1,5 @@
+1. Estrai lo zip nella RADICE della repo del progetto (.claude/ e CLAUDE.md devono finire li', accanto a package.json).
+2. Su Windows, da PowerShell nella radice: Get-ChildItem -Recurse .claude | Unblock-File
+3. Se la repo ha gia' un CLAUDE.md, rinomina questo in CLAUDE.orchestra.md e uniscili a mano.
+4. Stack generico: nessun hook quality-gate (non c'e' build/test da lanciare).
+5. Apri Claude Code nella radice: leggi docs/STATO.md, poi npm install && npm run build.

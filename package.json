@@ -1,0 +1,13 @@
+{
+  "name": "state-of-the-route",
+  "version": "0.1.0",
+  "private": true,
+  "description": "State of the Route: meteo lungo il percorso in bici. Pagina singola, solo open source.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "npx --yes http-server dist -p 5173 -c-1"
+  },
+  "devDependencies": {
+    "maplibre-gl": "4.7.1"
+  }
+}

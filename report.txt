@@ -1,0 +1,6 @@
+Stack rilevato: _generic (sito statico HTML/JS, nessun csproj/pyproject)
+Team installato: worker, scout, runner, security-guardian + skill project-analysis
+Copertura: parziale (vedi sotto)
+CLAUDE.md prodotto: CLAUDE.md
+Data template: 2026-09-30 · Generato: 2026-10-05
+Non coperto dal team _generic: test automatici del JS (nessun test-engineer), quality gate (nessun hook Stop), revisione UX dedicata.
