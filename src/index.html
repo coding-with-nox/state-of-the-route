@@ -611,7 +611,7 @@ $('bRadar').onclick=async e=>{
   const btn=e.currentTarget, on=btn.getAttribute('aria-pressed')!=='true'; btn.setAttribute('aria-pressed',on); await ready;
   if(!on){ radarCfg=null; if(map.getLayer('radar')){map.removeLayer('radar');map.removeSource('radar');} return; }
   try{ const j=await (await fetch('https://api.rainviewer.com/public/weather-maps.json')).json(); const f=j.radar.past.at(-1);
-    radarCfg=`${j.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`; addRadar();
+    if(!/^https:\/\/[a-z0-9.-]*rainviewer\.com$/.test(String(j.host))) throw new Error('host radar inatteso'); radarCfg=`${j.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`; addRadar();
     status('Radar delle '+new Date(f.time*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.');
   }catch{ btn.setAttribute('aria-pressed',false); status('Radar non disponibile ora.',true); }
 };
@@ -680,7 +680,7 @@ function wxAt(i,eta){
   if(st.wx.ens&&inH){ const e=st.wx.ens[i]||st.wx.ens[0]; agree=0; for(const md of MODELS){ const a=e.hourly['precipitation_'+md]; if(!a)continue;
     const v=a[idxAfter(e.hourly.time,eta,3600)]; if(v==null)continue; nm++; if(v>=0.2)agree++; } }
   const g=k=>inH?w.hourly[k]?.[hk]:null;
-  return {mmh,prob:g('precipitation_probability')??null,agree,nm,ws:g('wind_speed_10m'),wd:g('wind_direction_10m'),temp:g('temperature_2m')};
+  return {mmh,prob:(v=>Number.isFinite(+v)&&v!=null?+v:null)(g('precipitation_probability')),agree,nm,ws:g('wind_speed_10m'),wd:g('wind_direction_10m'),temp:g('temperature_2m')};
 }
 function evaluate(dep){
   const S=st.samples.samples, v=st.speed/3.6;

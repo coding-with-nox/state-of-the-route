@@ -207,7 +207,7 @@ function sotrBuildStyle(opts) {
     name: 'State of the Route ' + (dark ? 'dark' : 'light'),
     glyphs: glyphs,
     sources: { openmaptiles: { type: 'vector', url: tilejson,
-      attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>' } },
+      attribution: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' } },
     layers: layers
   };
 }
