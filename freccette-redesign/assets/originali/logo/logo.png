@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Promotion Soft Darts</title>
+    <meta name="description" content="Promotion Soft Darts" />
+
+    <meta property="og:title" content="Promotion Soft Darts" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://freccette.pro" />
+    <meta property="og:image" content="https://freccette.pro/logo.png" />
+    <meta property="og:image:alt" content="Promotion Soft Darts" />
+
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#fafafa" />
+    <script type="module" crossorigin src="/assets/index-XR5ZRpT7.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-B0Z9INg1.js">
+    <link rel="modulepreload" crossorigin href="/assets/it-CmCFwpJN.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-BGAd54-6.css">
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <!-- Cloudflare Web Analytics -->
+    <script
+      defer
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon='{"token": "7e6eb832c46447ba8218b73f64df14f0"}'
+    ></script>
+    <!-- End Cloudflare Web Analytics -->
+
+    <!-- Google tag (gtag.js) -->
+    <script
+      async
+      src="https://www.googletagmanager.com/gtag/js?id=G-8JWTJYFHHN"
+    ></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+
+      gtag("config", "G-8JWTJYFHHN");
+    </script>
+    <!-- End Google tag (gtag.js) -->
+  </body>
+</html>
