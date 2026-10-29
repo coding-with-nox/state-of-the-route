@@ -214,3 +214,21 @@ footer .fine{font-size:.875rem;border-top:1px solid rgba(255,255,255,.25);paddin
 footer .tbc{white-space:normal}
 @media (prefers-reduced-motion:no-preference){.btn,.chip,.tab{transition:background-color .15s,color .15s}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+[hidden]{display:none!important}
+
+.sec{grid-template-columns:minmax(0,1fr)}
+
+/* evita layout shift: il footer resta sotto la piega mentre i dati si caricano */
+main{min-height:100vh}
+/* spazio riservato ai blocchi riempiti da JS (riduce il layout shift) */
+#champs:empty{min-height:10rem}
+#cats:empty{min-height:2.75rem}
+#count:empty,#scount:empty{min-height:1.5rem}
+#panel:empty,#spanel:empty,#venues:empty{min-height:70vh}
+@media (min-width:720px){#champs:empty{min-height:3rem}}
+#camp-cards{min-height:34rem}
+#next-list{min-height:22rem}
+@media (min-width:1000px){#camp-cards{min-height:17rem}#next-list{min-height:25rem}}
+#stabs:empty{min-height:3.25rem}
+#champs:empty{min-height:11rem}
